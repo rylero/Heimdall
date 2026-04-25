@@ -1,0 +1,15 @@
+services:
+  heimdall:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ../models:/app/models
+      - ../config:/app/config
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+    network_mode: host
