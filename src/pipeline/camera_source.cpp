@@ -6,6 +6,9 @@ std::string build_source_description(const CameraConfig& cfg) {
     std::ostringstream ss;
     switch (cfg.type) {
         case CameraType::USB:
+            // Assumes camera outputs MJPEG (fastest path on Jetson).
+            // If camera only supports raw YUY2, replace image/jpeg + jpegdec
+            // with: video/x-raw,format=YUY2 ! videoconvert
             ss << "v4l2src device=" << cfg.device
                << " ! image/jpeg"
                << ",width="  << cfg.width
