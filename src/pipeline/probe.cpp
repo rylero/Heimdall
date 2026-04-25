@@ -6,6 +6,7 @@ GstPadProbeReturn detection_probe_cb(GstPad*, GstPadProbeInfo* info, gpointer us
     auto* cb = static_cast<DetectionCallback*>(user_data);
 
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
+    if (!buf) return GST_PAD_PROBE_OK;
     NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
     if (!batch) return GST_PAD_PROBE_OK;
 
