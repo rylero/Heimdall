@@ -43,14 +43,15 @@ add_library(heimdall_pipeline
     src/pipeline/pipeline.cpp
 )
 target_include_directories(heimdall_pipeline PUBLIC
-    src/
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${DS_INCLUDES}
     ${GST_INCLUDE_DIRS}
 )
 target_link_libraries(heimdall_pipeline
-    ${GST_LIBRARIES}
-    ${NVDS_META_LIB}
-    ${NVDSGST_META_LIB}
+    PUBLIC
+        ${GST_LIBRARIES}
+        ${NVDS_META_LIB}
+        ${NVDSGST_META_LIB}
 )
 
 # ---------------------------------------------------------------------------
