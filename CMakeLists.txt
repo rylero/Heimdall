@@ -167,9 +167,18 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
             heimdall_tracker
     )
 
-    # Main executable (on-Jetson validation)
-    add_executable(heimdall src/main.cpp)
-    target_link_libraries(heimdall heimdall_pipeline)
+    # Main executable — full integrated app
+    add_executable(heimdall
+        src/main.cpp
+        src/app/heimdall_app.cpp
+    )
+    target_include_directories(heimdall PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(heimdall
+        heimdall_pipeline
+        heimdall_comm
+    )
 
     # RFDetr bbox parser shared library
     add_subdirectory(src/models/bbox_parser)

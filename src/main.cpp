@@ -1,47 +1,46 @@
-#include "pipeline/camera_source.h"
-#include "pipeline/detection.h"
-#include "pipeline/pipeline.h"
-#include <atomic>
-#include <chrono>
+#include "app/heimdall_app.h"
+#include "pose/camera_params.h"
 #include <csignal>
 #include <cstdio>
-#include <vector>
 
-static DeepStreamPipeline* g_pipeline = nullptr;
-static std::atomic<int>    g_frames{0};
-static auto                g_start = std::chrono::steady_clock::now();
-
-static void on_detection(const std::vector<Detection>& dets) {
-    ++g_frames;
-    double elapsed = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - g_start).count();
-
-    for (const auto& d : dets)
-        std::printf("cam=%d class=%d conf=%.2f box=(%.0f,%.0f,%.0fx%.0f)\n",
-            d.camera_id, d.class_id, d.confidence,
-            d.left, d.top, d.width, d.height);
-
-    if (elapsed > 0.0) {
-        int frames = g_frames.load();
-        std::printf("  FPS: %.1f  frames=%d\n",
-            static_cast<double>(frames) / elapsed, frames);
-    }
-}
+static HeimdallApp* g_app = nullptr;
 
 static void shutdown(int) {
-    if (g_pipeline) g_pipeline->stop();
+    if (g_app) g_app->stop();
 }
 
 int main() {
-    std::vector<CameraConfig> cameras{
-        {0, CameraType::USB, "/dev/video0"},
+    // Camera mounting configuration — adjust for your physical setup.
+    // rotation_from_euler(yaw, pitch, roll):
+    //   yaw=0 -> camera faces robot forward (+X)
+    //   pitch=0.5 -> camera tilted ~28 degrees downward
+    std::vector<CameraParams> cameras = {{
+        .intrinsics = {500.f, 500.f, 320.f, 240.f},
+        .extrinsics = {
+            .tx = 0.3f, .ty = 0.f, .tz = 0.6f,
+            .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+        },
+    }};
+
+    HeimdallApp::Config cfg{
+        .cameras           = cameras,
+        .infer_config_path = "config/infer_rfdetr.txt",
+        .tracker           = {
+            .confirmation_frames = 3,
+            .loss_frames         = 5,
+            .gate_distance       = 1.0f,
+        },
+        .comm = {
+            .pose_bind_addr   = "tcp://*:5555",
+            .output_bind_addr = "tcp://*:5556",
+        },
     };
 
-    DeepStreamPipeline pipeline(cameras, "config/infer_rfdetr.txt", on_detection);
-    g_pipeline = &pipeline;
+    HeimdallApp app(cfg);
+    g_app = &app;
     std::signal(SIGINT, shutdown);
 
-    g_start = std::chrono::steady_clock::now();
-    pipeline.run();
+    std::printf("Heimdall starting. Ctrl+C to stop.\n");
+    app.run();
     return 0;
 }
