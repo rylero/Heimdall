@@ -16,7 +16,7 @@ struct Track {
     std::array<float, 16> cov;
 
     double      last_update_s;
-    int         frames_seen;    // consecutive frames with associated detection
+    int         frames_seen;    // total frames with associated detection (used for TENTATIVE->CONFIRMED promotion)
     int         frames_missed;  // consecutive frames with no associated detection
     TrackStatus status;
 };

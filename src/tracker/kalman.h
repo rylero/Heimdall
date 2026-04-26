@@ -2,9 +2,9 @@
 #include "track.h"
 
 // Measurement noise variance (m^2). Derived from +/-7 cm pose accuracy: 0.07^2 ~= 0.005
-static constexpr float MEAS_NOISE_R    = 0.005f;
+inline constexpr float MEAS_NOISE_R    = 0.005f;
 // Process noise intensity. Higher = trust detections more, allow faster acceleration.
-static constexpr float PROCESS_NOISE_Q = 0.1f;
+inline constexpr float PROCESS_NOISE_Q = 0.1f;
 
 // Predict track forward by dt seconds (constant-velocity model).
 void kalman_predict(Track& track, double dt);
