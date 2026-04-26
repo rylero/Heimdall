@@ -19,6 +19,51 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 # ---------------------------------------------------------------------------
+# libzmq — ZeroMQ C library
+# ---------------------------------------------------------------------------
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+FetchContent_Declare(
+    zeromq
+    GIT_REPOSITORY https://github.com/zeromq/libzmq.git
+    GIT_TAG        v4.3.5
+    GIT_SHALLOW    TRUE
+)
+set(ZMQ_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
+set(WITH_PERF_TOOL    OFF CACHE BOOL "" FORCE)
+set(WITH_DOCS         OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(zeromq)
+
+# ---------------------------------------------------------------------------
+# cppzmq — header-only C++ bindings for libzmq
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    cppzmq
+    GIT_REPOSITORY https://github.com/zeromq/cppzmq.git
+    GIT_TAG        v4.10.0
+    GIT_SHALLOW    TRUE
+)
+set(CPPZMQ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(cppzmq)
+
+# ---------------------------------------------------------------------------
+# Protobuf — message serialization
+# ---------------------------------------------------------------------------
+set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+FetchContent_Declare(
+    protobuf
+    GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
+    GIT_TAG        v26.1
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  cmake
+)
+set(protobuf_BUILD_TESTS         OFF CACHE BOOL "" FORCE)
+set(protobuf_BUILD_EXAMPLES      OFF CACHE BOOL "" FORCE)
+set(protobuf_INSTALL             OFF CACHE BOOL "" FORCE)
+set(protobuf_BUILD_SHARED_LIBS   OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(protobuf)
+include(${protobuf_SOURCE_DIR}/cmake/protobuf-generate.cmake)
+
+# ---------------------------------------------------------------------------
 # Tracker library — no GStreamer/DeepStream dependency, unit-testable anywhere
 # ---------------------------------------------------------------------------
 add_library(heimdall_tracker
@@ -39,6 +84,45 @@ add_library(heimdall_pose
 target_include_directories(heimdall_pose PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+# ---------------------------------------------------------------------------
+# Protobuf generated sources
+# ---------------------------------------------------------------------------
+add_library(heimdall_proto
+    proto/heimdall.proto
+)
+target_include_directories(heimdall_proto PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+target_link_libraries(heimdall_proto PUBLIC libprotobuf)
+protobuf_generate(
+    TARGET  heimdall_proto
+    PROTOS  ${CMAKE_CURRENT_SOURCE_DIR}/proto/heimdall.proto
+    LANGUAGE cpp
+)
+
+# ---------------------------------------------------------------------------
+# Comm library — ZeroMQ + protobuf, no hardware dependency
+# ---------------------------------------------------------------------------
+add_library(heimdall_comm
+    src/comm/comm_layer.cpp
+)
+target_include_directories(heimdall_comm PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(heimdall_comm
+    PUBLIC  heimdall_proto heimdall_tracker heimdall_pose
+    PRIVATE libzmq cppzmq
+)
+
+# ---------------------------------------------------------------------------
+# Mock robot — standalone tool, simulates RoboRIO ZeroMQ interface
+# ---------------------------------------------------------------------------
+add_executable(mock_robot tools/mock_robot.cpp)
+target_include_directories(mock_robot PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(mock_robot PRIVATE heimdall_comm libzmq cppzmq)
 
 # ---------------------------------------------------------------------------
 # GStreamer (available inside DeepStream Docker image)

@@ -32,3 +32,14 @@ target_link_libraries(heimdall_pose_tests
     Catch2::Catch2WithMain
 )
 catch_discover_tests(heimdall_pose_tests)
+
+add_executable(heimdall_comm_tests
+    test_comm_layer.cpp
+)
+target_link_libraries(heimdall_comm_tests
+    heimdall_comm
+    libzmq
+    cppzmq
+    Catch2::Catch2WithMain
+)
+catch_discover_tests(heimdall_comm_tests)
