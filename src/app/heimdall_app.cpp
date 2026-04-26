@@ -3,10 +3,10 @@
 
 HeimdallApp::HeimdallApp(Config config)
     : config_(std::move(config)),
-      pose_estimator_(config_.cameras),
+      pose_estimator_(config_.pose_cameras),
       tracker_(config_.tracker),
       comm_(config_.comm),
-      pipeline_(config_.cameras, config_.infer_config_path,
+      pipeline_(config_.pipeline_cameras, config_.infer_config_path,
                 [this](const std::vector<Detection>& d){ on_detections(d); })
 {}
 
@@ -45,6 +45,7 @@ void HeimdallApp::run() {
 }
 
 void HeimdallApp::stop() {
+    if (stopped_.exchange(true)) return;  // guard against double-stop
     running_ = false;
     pipeline_.stop();
     if (pose_recv_thread_.joinable())
