@@ -8,7 +8,7 @@ bool PoseEstimator::project_pixel(int camera_id,
                                    float px, float py,
                                    const RobotPose& rp,
                                    float& field_x, float& field_y) const {
-    const auto& cam  = cameras_[camera_id];
+    const auto& cam  = cameras_[static_cast<size_t>(camera_id)];
     const auto& intr = cam.intrinsics;
     const auto& extr = cam.extrinsics;
     const auto& R    = extr.R;  // camera->robot, row-major 3x3
