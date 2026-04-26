@@ -31,6 +31,16 @@ target_include_directories(heimdall_tracker PUBLIC
 )
 
 # ---------------------------------------------------------------------------
+# Pose estimation library — no hardware dependency, unit-testable anywhere
+# ---------------------------------------------------------------------------
+add_library(heimdall_pose
+    src/pose/pose_estimator.cpp
+)
+target_include_directories(heimdall_pose PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# ---------------------------------------------------------------------------
 # GStreamer (available inside DeepStream Docker image)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig QUIET)
