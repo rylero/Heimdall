@@ -37,6 +37,7 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
             case TrackEventType::CONFIRMED: msg_ev->set_type(heimdall::CONFIRMED); break;
             case TrackEventType::UPDATED:   msg_ev->set_type(heimdall::UPDATED);   break;
             case TrackEventType::LOST:      msg_ev->set_type(heimdall::LOST);      break;
+            default: break;  // guard against future enum additions
         }
 
         auto* obj = msg_ev->mutable_object();
