@@ -58,10 +58,10 @@ inline std::array<float, 9> rotation_from_euler(float yaw, float pitch, float ro
     };
 
     // Rz(yaw): mount orientation around robot_Z
-    const float cy2 = std::cos(yaw), sy2 = std::sin(yaw);
+    const float c_yaw = std::cos(yaw), s_yaw = std::sin(yaw);
     const float Rz_rob[9] = {
-         cy2, -sy2, 0.f,
-         sy2,  cy2, 0.f,
+         c_yaw, -s_yaw, 0.f,
+         s_yaw,  c_yaw, 0.f,
         0.f,   0.f, 1.f,
     };
 
