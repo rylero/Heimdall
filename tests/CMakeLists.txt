@@ -1,0 +1,9 @@
+add_executable(heimdall_tests
+    test_camera_source.cpp
+)
+target_link_libraries(heimdall_tests
+    heimdall_pipeline
+    Catch2::Catch2WithMain
+)
+include(Catch)
+catch_discover_tests(heimdall_tests)
