@@ -42,4 +42,12 @@ target_link_libraries(heimdall_comm_tests
     cppzmq
     Catch2::Catch2WithMain
 )
-catch_discover_tests(heimdall_comm_tests)
+# On Windows, libzmq is a DLL — add its output dir to the PATH used by catch_discover_tests
+# so the post-build test-discovery step can load the executable.
+if(WIN32)
+    catch_discover_tests(heimdall_comm_tests
+        DL_PATHS $<TARGET_FILE_DIR:libzmq>
+    )
+else()
+    catch_discover_tests(heimdall_comm_tests)
+endif()

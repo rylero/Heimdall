@@ -59,6 +59,7 @@ set(protobuf_BUILD_TESTS         OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_EXAMPLES      OFF CACHE BOOL "" FORCE)
 set(protobuf_INSTALL             OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_SHARED_LIBS   OFF CACHE BOOL "" FORCE)
+set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(protobuf)
 # protobuf_generate() lives in cmake/protobuf-generate.cmake; must be included explicitly
 # because FetchContent runs the subproject in its own scope (functions don't propagate up)
@@ -94,6 +95,7 @@ add_library(heimdall_proto
 )
 target_include_directories(heimdall_proto PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/proto
 )
 target_link_libraries(heimdall_proto PUBLIC libprotobuf)
 protobuf_generate(
