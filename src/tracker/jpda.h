@@ -16,8 +16,8 @@ struct JpdaConfig {
 //   4. Update each track with combined weighted innovation
 //   5. Increment frames_seen / frames_missed counters
 //
-// Returns indices into `detections` with total association probability < 0.5
-// (candidates for new track creation).
+// Returns indices into `detections` that fell outside all track gates
+// (no track gated this detection — candidates for new track creation).
 std::vector<int> jpda_update(
     std::vector<Track>&                tracks,
     const std::vector<FieldDetection>& detections,
