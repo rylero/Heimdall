@@ -4,7 +4,7 @@ package heimdall;
 // Sent from RoboRIO -> Jetson every robot control loop cycle (~50 Hz).
 message RobotPoseMsg {
     float  x            = 1;   // field-relative, meters
-    float  y            = 2;
+    float  y            = 2;   // field-relative, meters
     float  heading      = 3;   // radians, CCW from +X axis
     uint64 timestamp_ns = 4;
 }
