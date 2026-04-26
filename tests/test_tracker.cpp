@@ -32,7 +32,7 @@ TEST_CASE("confirmed track emits UPDATED every subsequent frame", "[tracker]") {
     auto events = t.update(at(0.f, 0.f), 2 * 0.02);
     long updated = std::count_if(events.begin(), events.end(),
         [](const TrackEvent& e){ return e.type == TrackEventType::UPDATED; });
-    REQUIRE(updated >= 1);
+    REQUIRE(updated == 1);
 }
 
 TEST_CASE("confirmed track emits LOST after loss_frames missed frames", "[tracker]") {
@@ -85,7 +85,7 @@ TEST_CASE("tentative track discarded on first missed frame", "[tracker]") {
     auto events = t.update(at(0.f, 0.f), 7 * 0.02);
     long confirmed = std::count_if(events.begin(), events.end(),
         [](const TrackEvent& e){ return e.type == TrackEventType::CONFIRMED; });
-    REQUIRE(confirmed <= 1);
+    REQUIRE(confirmed == 0);  // discarded track can't confirm; fresh track confirmed in prior frame
 }
 
 TEST_CASE("CONFIRMED event carries correct position", "[tracker]") {
