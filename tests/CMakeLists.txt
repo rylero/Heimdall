@@ -1,3 +1,4 @@
+# Existing pipeline tests (require GStreamer headers — Jetson/Docker only)
 add_executable(heimdall_tests
     test_camera_source.cpp
 )
@@ -7,3 +8,15 @@ target_link_libraries(heimdall_tests
 )
 include(Catch)
 catch_discover_tests(heimdall_tests)
+
+# Tracker tests — no hardware dependency, run on any machine
+add_executable(heimdall_tracker_tests
+    test_kalman.cpp
+    test_jpda.cpp
+    test_tracker.cpp
+)
+target_link_libraries(heimdall_tracker_tests
+    heimdall_tracker
+    Catch2::Catch2WithMain
+)
+catch_discover_tests(heimdall_tracker_tests)

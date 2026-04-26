@@ -19,6 +19,18 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 # ---------------------------------------------------------------------------
+# Tracker library — no GStreamer/DeepStream dependency, unit-testable anywhere
+# ---------------------------------------------------------------------------
+add_library(heimdall_tracker
+    src/tracker/kalman.cpp
+    src/tracker/jpda.cpp
+    src/tracker/tracker.cpp
+)
+target_include_directories(heimdall_tracker PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# ---------------------------------------------------------------------------
 # GStreamer (available inside DeepStream Docker image)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig REQUIRED)
@@ -52,6 +64,7 @@ target_link_libraries(heimdall_pipeline
         ${GST_LIBRARIES}
         ${NVDS_META_LIB}
         ${NVDSGST_META_LIB}
+        heimdall_tracker
 )
 
 # ---------------------------------------------------------------------------
