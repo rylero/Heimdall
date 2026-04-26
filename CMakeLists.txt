@@ -54,13 +54,14 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/protocolbuffers/protobuf.git
     GIT_TAG        v26.1
     GIT_SHALLOW    TRUE
-    SOURCE_SUBDIR  cmake
 )
 set(protobuf_BUILD_TESTS         OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_EXAMPLES      OFF CACHE BOOL "" FORCE)
 set(protobuf_INSTALL             OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_SHARED_LIBS   OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(protobuf)
+# protobuf_generate() lives in cmake/protobuf-generate.cmake; must be included explicitly
+# because FetchContent runs the subproject in its own scope (functions don't propagate up)
 include(${protobuf_SOURCE_DIR}/cmake/protobuf-generate.cmake)
 
 # ---------------------------------------------------------------------------
