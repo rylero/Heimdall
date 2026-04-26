@@ -23,3 +23,12 @@ target_link_libraries(heimdall_tracker_tests
     Catch2::Catch2WithMain
 )
 catch_discover_tests(heimdall_tracker_tests)
+
+add_executable(heimdall_pose_tests
+    test_pose_estimator.cpp
+)
+target_link_libraries(heimdall_pose_tests
+    heimdall_pose
+    Catch2::Catch2WithMain
+)
+catch_discover_tests(heimdall_pose_tests)
