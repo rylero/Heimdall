@@ -1,3 +1,41 @@
-// placeholder until Task 2
 syntax = "proto3";
 package heimdall;
+
+// Sent from RoboRIO -> Jetson every robot control loop cycle (~50 Hz).
+message RobotPoseMsg {
+    float  x            = 1;   // field-relative, meters
+    float  y            = 2;
+    float  heading      = 3;   // radians, CCW from +X axis
+    uint64 timestamp_ns = 4;
+}
+
+// A single tracked object in a frame.
+message TrackedObjectMsg {
+    uint32 track_id   = 1;
+    int32  class_id   = 2;
+    float  x          = 3;   // field-relative, meters
+    float  y          = 4;
+    float  vx         = 5;   // velocity, m/s
+    float  vy         = 6;
+    float  confidence = 7;
+}
+
+enum TrackEventTypeMsg {
+    CONFIRMED = 0;
+    UPDATED   = 1;
+    LOST      = 2;
+}
+
+// A single track lifecycle event.
+message TrackEventMsg {
+    TrackEventTypeMsg type   = 1;
+    TrackedObjectMsg  object = 2;
+}
+
+// Sent from Jetson -> RoboRIO every detection frame.
+// healthy=false signals a pipeline error (lost camera, inference crash, etc.)
+message DetectionFrameMsg {
+    repeated TrackEventMsg events       = 1;
+    uint64                 timestamp_ns = 2;
+    bool                   healthy      = 3;
+}
