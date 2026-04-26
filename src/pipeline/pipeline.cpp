@@ -15,8 +15,10 @@ DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
     pipeline_ = gst_pipeline_new("heimdall");
+    if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
 
     GstElement* mux = gst_element_factory_make("nvstreammux", "mux");
+    if (!mux) throw std::runtime_error("Failed to create nvstreammux — DeepStream plugins not loaded?");
     g_object_set(mux,
         "width",                640,
         "height",               480,
@@ -41,21 +43,26 @@ void DeepStreamPipeline::build() {
         GstPad* src_pad  = gst_element_get_static_pad(src, "src");
         GstPad* sink_pad = gst_element_get_request_pad(mux,
             ("sink_" + std::to_string(i)).c_str());
-        gst_pad_link(src_pad, sink_pad);
+        if (gst_pad_link(src_pad, sink_pad) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link src_" + std::to_string(i) + " to mux");
         gst_object_unref(src_pad);
         gst_object_unref(sink_pad);
     }
 
     GstElement* infer = gst_element_factory_make("nvinfer", "infer");
+    if (!infer) throw std::runtime_error("Failed to create nvinfer");
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
     GstElement* sink = gst_element_factory_make("fakesink", "sink");
+    if (!sink) throw std::runtime_error("Failed to create fakesink");
     g_object_set(sink, "sync", FALSE, nullptr);
     gst_bin_add(GST_BIN(pipeline_), sink);
 
-    gst_element_link(mux, infer);
-    gst_element_link(infer, sink);
+    if (!gst_element_link(mux, infer))
+        throw std::runtime_error("Failed to link mux to infer");
+    if (!gst_element_link(infer, sink))
+        throw std::runtime_error("Failed to link infer to sink");
 
     // Install pad probe on nvinfer src pad to extract detections each frame
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");

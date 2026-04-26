@@ -21,9 +21,11 @@ static void on_detection(const std::vector<Detection>& dets) {
             d.camera_id, d.class_id, d.confidence,
             d.left, d.top, d.width, d.height);
 
-    std::printf("  FPS: %.1f  frames=%d\n",
-        static_cast<double>(g_frames.load()) / elapsed,
-        g_frames.load());
+    if (elapsed > 0.0) {
+        int frames = g_frames.load();
+        std::printf("  FPS: %.1f  frames=%d\n",
+            static_cast<double>(frames) / elapsed, frames);
+    }
 }
 
 static void shutdown(int) {
