@@ -38,6 +38,8 @@ extern "C" bool NvDsInferParseCustomRFDetr(
     // Return false so nvinfer logs a warning — mismatched layer names are a
     // common misconfiguration and should surface immediately.
     if (!logits || !boxes) return false;
+    if (num_queries <= 0 || num_classes <= 0) return false;
+    if (detectionParams.perClassThreshold.empty()) return false;
 
     for (int q = 0; q < num_queries; ++q) {
         const float* ql = logits + q * num_classes;
