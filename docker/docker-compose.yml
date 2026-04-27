@@ -9,7 +9,22 @@ services:
     volumes:
       - ../models:/app/models
       - ../config:/app/config
+      - heimdall-data:/app/data
     devices:
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1
     network_mode: host
+
+  heimdall-web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../models:/app/models
+      - heimdall-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  heimdall-data:
