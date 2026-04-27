@@ -55,8 +55,9 @@ def init_db(path: Path = DB_PATH) -> None:
         con.execute("INSERT OR IGNORE INTO model_config   (id) VALUES (1)")
 
 @contextmanager
-def get_db(path: Path = DB_PATH):
-    con = sqlite3.connect(path)
+def get_db():
+    # Read DB_PATH from module namespace at call time so monkeypatching works in tests
+    con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     try:
         yield con
