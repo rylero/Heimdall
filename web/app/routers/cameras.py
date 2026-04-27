@@ -32,12 +32,12 @@ def create_camera(cam: CameraConfig):
 @router.put("/{camera_id}", response_model=CameraConfig)
 def update_camera(camera_id: int, cam: CameraConfig):
     with get_db() as db:
+        if not db.execute("SELECT 1 FROM cameras WHERE id = ?", (camera_id,)).fetchone():
+            raise HTTPException(404, f"Camera {camera_id} not found")
         set_clause = ", ".join(f"{c} = ?" for c in _COLS)
         values = tuple(getattr(cam, c) for c in _COLS) + (camera_id,)
         db.execute(f"UPDATE cameras SET {set_clause} WHERE id = ?", values)
         row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, f"Camera {camera_id} not found")
         return CameraConfig(**dict(row))
 
 
