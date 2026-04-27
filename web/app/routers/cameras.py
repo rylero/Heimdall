@@ -1,4 +1,6 @@
+import cv2
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from ..database import get_db
 from ..models import CameraConfig
 
@@ -45,3 +47,58 @@ def update_camera(camera_id: int, cam: CameraConfig):
 def delete_camera(camera_id: int):
     with get_db() as db:
         db.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
+
+
+@router.get("/available")
+def list_available_cameras():
+    """Scan /dev/video0..9 for present devices. Returns empty list on non-Linux."""
+    from pathlib import Path
+    devices = []
+    for i in range(10):
+        p = Path(f"/dev/video{i}")
+        if p.exists():
+            devices.append({"index": i, "device": str(p), "name": f"USB Camera {i}"})
+    return devices
+
+
+def _mjpeg_frames(device: str):
+    src = int(device) if str(device).isdigit() else device
+    cap = cv2.VideoCapture(src)
+    if not cap.isOpened():
+        return
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                   + buf.tobytes() + b"\r\n")
+    finally:
+        cap.release()
+
+
+@router.get("/{camera_id}/stream")
+def stream_camera(camera_id: int):
+    with get_db() as db:
+        row = db.execute(
+            "SELECT device FROM cameras WHERE id = ?", (camera_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Camera not found")
+
+    device = row["device"]
+    src = int(device) if str(device).isdigit() else device
+    cap = cv2.VideoCapture(src)
+    opened = cap.isOpened()
+    cap.release()
+
+    if not opened:
+        raise HTTPException(503, "Camera device unavailable (may be in use by pipeline)")
+
+    return StreamingResponse(
+        _mjpeg_frames(device),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
