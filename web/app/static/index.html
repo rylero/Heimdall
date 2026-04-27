@@ -3,52 +3,103 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Heimdall Config</title>
+  <title>Heimdall</title>
   <style>
+    :root {
+      --bg:       #070b14;
+      --surface:  #0c1120;
+      --surface2: #111827;
+      --border:   #1e2d45;
+      --text:     #e8edf5;
+      --muted:    #6b7a96;
+      --accent:   #3b82f6;
+      --danger:   #ef4444;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #111; color: #eee; }
-    header { padding: 1rem 1.5rem; background: #1a1a2e; border-bottom: 2px solid #e94560; }
-    header h1 { font-size: 1.4rem; color: #e94560; }
-    nav { display: flex; gap: 0; background: #16213e; }
-    nav button {
-      padding: .7rem 1.4rem; background: none; border: none; color: #aaa;
-      cursor: pointer; font-size: .95rem; border-bottom: 3px solid transparent;
-    }
-    nav button.active { color: #e94560; border-bottom-color: #e94560; }
-    .tab { display: none; padding: 1.5rem; max-width: 900px; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+    header { display: flex; align-items: center; gap: .75rem; padding: .9rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1rem; font-weight: 600; letter-spacing: .05em; }
+    header .sub { font-size: .75rem; color: var(--muted); margin-left: auto; }
+
+    nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 1.5rem; }
+    nav button { padding: .65rem 1.1rem; background: none; border: none; color: var(--muted); cursor: pointer; font-size: .875rem; font-weight: 500; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+    nav button:hover { color: var(--text); }
+    nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab { display: none; padding: 1.5rem; max-width: 960px; }
     .tab.active { display: block; }
-    .card {
-      background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 6px;
-      padding: 1rem; margin-bottom: 1rem;
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .card-header h3 { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+
+    label { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .05em; }
+    input[type=text], input[type=number], select, textarea {
+      width: 100%; padding: .5rem .75rem; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; font-size: .875rem; outline: none; transition: border-color .15s;
     }
-    .card h3 { margin-bottom: .8rem; color: #e94560; font-size: 1rem; }
-    label { display: block; font-size: .85rem; color: #aaa; margin-bottom: .25rem; }
-    input, select {
-      width: 100%; padding: .4rem .6rem; background: #0f3460; border: 1px solid #2a4a7f;
-      color: #eee; border-radius: 4px; font-size: .9rem; margin-bottom: .6rem;
-    }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
-    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .8rem; }
-    button.btn {
-      padding: .45rem 1.1rem; border: none; border-radius: 4px; cursor: pointer;
-      font-size: .9rem; font-weight: 600;
-    }
-    .btn-primary { background: #e94560; color: #fff; }
-    .btn-secondary { background: #2a4a7f; color: #eee; }
-    .btn-danger { background: #7f1d1d; color: #fca5a5; }
-    .btn-sm { padding: .3rem .7rem; font-size: .8rem; }
-    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
-    th { text-align: left; padding: .5rem; color: #aaa; border-bottom: 1px solid #2a2a4e; }
-    td { padding: .5rem; border-bottom: 1px solid #1a1a3e; }
-    #toast {
-      position: fixed; bottom: 1.5rem; right: 1.5rem;
-      background: #14532d; color: #86efac; padding: .6rem 1.2rem;
-      border-radius: 5px; display: none; z-index: 999;
-    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    .field { margin-bottom: .9rem; }
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; }
+    .g4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: .75rem; }
+    .divider { font-size: .68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin: 1rem 0 .6rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+
+    .btn { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .9rem; border: none; border-radius: 6px; cursor: pointer; font-size: .8rem; font-weight: 600; transition: opacity .15s; }
+    .btn:hover { opacity: .82; }
+    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger    { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-ghost     { background: none; color: var(--muted); border: 1px solid var(--border); }
+    .btn-sm { padding: .3rem .65rem; font-size: .75rem; }
+
+    /* Available camera row */
+    .avail-row { display: flex; align-items: center; justify-content: space-between; padding: .6rem .8rem; background: var(--surface2); border-radius: 6px; margin-bottom: .4rem; }
+    .avail-dev { font-family: monospace; font-size: .82rem; }
+    .avail-sub { font-size: .72rem; color: var(--muted); }
+
+    /* Camera config cards */
+    .cam-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: .6rem; overflow: hidden; }
+    .cam-card-hdr { display: flex; align-items: center; gap: .7rem; padding: .85rem 1rem; cursor: pointer; user-select: none; }
+    .cam-card-hdr:hover { background: var(--surface2); }
+    .cam-name { font-weight: 600; font-size: .88rem; }
+    .cam-dev  { font-family: monospace; font-size: .75rem; color: var(--muted); }
+    .cam-body { padding: 1.1rem; border-top: 1px solid var(--border); display: none; }
+    .cam-body.open { display: block; }
+    .cam-actions { display: flex; gap: .5rem; margin-top: 1rem; align-items: center; }
+    .feed-toggle-label { margin-left: auto; display: flex; align-items: center; gap: .4rem; cursor: pointer; font-size: .78rem; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 500; }
+    .feed-toggle-label input { width: auto; accent-color: var(--accent); }
+
+    /* Feed */
+    .feed-wrap { position: relative; margin-top: .75rem; border-radius: 6px; overflow: hidden; background: #000; }
+    .feed-wrap img { width: 100%; display: block; }
+    .feed-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .feed-msg { padding: 1.5rem; text-align: center; color: var(--muted); font-size: .82rem; }
+
+    /* Threshold rows */
+    .t-row { display: flex; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+    .t-row input[type=text]   { flex: 1; }
+    .t-row input[type=number] { width: 80px; flex-shrink: 0; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: .55rem 1rem; border-radius: 6px; font-size: .8rem; font-weight: 500; display: none; z-index: 9999; }
+    #toast.ok  { background: rgba(34,197,94,.15); color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+    #toast.err { background: rgba(239,68,68,.15);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+
+    textarea { resize: vertical; font-family: monospace; font-size: .82rem; }
   </style>
 </head>
 <body>
-<header><h1>&#9889; Heimdall Vision Config</h1></header>
+
+<header>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5">
+    <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+  </svg>
+  <h1>HEIMDALL</h1>
+  <span class="sub">Vision Config</span>
+</header>
+
 <nav>
   <button class="active" onclick="showTab('cameras',this)">Cameras</button>
   <button onclick="showTab('tracker',this)">Tracker</button>
@@ -59,123 +110,91 @@
 <!-- CAMERAS -->
 <div id="tab-cameras" class="tab active">
   <div class="card">
-    <h3>Camera Configuration</h3>
-    <button class="btn btn-primary" onclick="openCameraForm(null)">+ Add Camera</button>
+    <div class="card-header">
+      <h3>Available Devices</h3>
+      <button class="btn btn-ghost btn-sm" onclick="scanCameras()">&#8635; Scan</button>
+    </div>
+    <div id="avail-list"><p style="color:var(--muted);font-size:.82rem">Scanning...</p></div>
   </div>
-  <div id="camera-list"></div>
-  <div id="camera-form-card" class="card" style="display:none">
-    <h3 id="camera-form-title">Edit Camera</h3>
-    <input type="hidden" id="cam-id">
-    <div class="row">
-      <div><label>Name</label><input id="cam-name" placeholder="Front"></div>
-      <div><label>Device</label><input id="cam-device" placeholder="/dev/video0"></div>
-    </div>
-    <div class="row">
-      <div><label>Type</label>
-        <select id="cam-type"><option value="usb">USB</option><option value="csi">CSI</option></select>
-      </div>
-      <div><label>Exposure (us)</label><input type="number" id="cam-exposure" value="10000"></div>
-    </div>
-    <h3 style="margin:.8rem 0 .5rem">Intrinsics</h3>
-    <div class="row">
-      <div><label>fx (px)</label><input type="number" id="cam-fx" value="500"></div>
-      <div><label>fy (px)</label><input type="number" id="cam-fy" value="500"></div>
-      <div><label>cx (px)</label><input type="number" id="cam-cx" value="320"></div>
-      <div><label>cy (px)</label><input type="number" id="cam-cy" value="240"></div>
-    </div>
-    <h3 style="margin:.8rem 0 .5rem">Extrinsics (robot frame)</h3>
-    <div class="row3">
-      <div><label>X forward (m)</label><input type="number" step="0.01" id="cam-tx" value="0"></div>
-      <div><label>Y left (m)</label><input type="number" step="0.01" id="cam-ty" value="0"></div>
-      <div><label>Z height (m)</label><input type="number" step="0.01" id="cam-tz" value="0.5"></div>
-    </div>
-    <div class="row3">
-      <div><label>Yaw (deg)</label><input type="number" step="1" id="cam-yaw" value="0"></div>
-      <div><label>Pitch down (deg)</label><input type="number" step="1" id="cam-pitch" value="30"></div>
-      <div><label>Roll (deg)</label><input type="number" step="1" id="cam-roll" value="0"></div>
-    </div>
-    <div style="margin-top:.8rem;display:flex;gap:.5rem">
-      <button class="btn btn-primary" onclick="saveCamera()">Save</button>
-      <button class="btn btn-secondary" onclick="closeCameraForm()">Cancel</button>
-    </div>
+  <div class="card">
+    <div class="card-header"><h3>Active Cameras</h3></div>
+    <div id="active-cam-list"><p style="color:var(--muted);font-size:.82rem">No cameras activated.</p></div>
   </div>
 </div>
 
 <!-- TRACKER -->
 <div id="tab-tracker" class="tab">
   <div class="card">
-    <h3>JPDA Tracker Parameters</h3>
-    <div class="row">
-      <div><label>Confirmation Frames</label><input type="number" id="t-confirm" min="1"></div>
-      <div><label>Loss Frames</label><input type="number" id="t-loss" min="1"></div>
+    <div class="card-header"><h3>JPDA Parameters</h3></div>
+    <div class="g2">
+      <div class="field"><label>Confirmation Frames</label><input type="number" id="t-confirm" min="1"></div>
+      <div class="field"><label>Loss Frames</label><input type="number" id="t-loss" min="1"></div>
+      <div class="field"><label>Gate Distance (m)</label><input type="number" step="0.1" id="t-gate" min="0.1"></div>
+      <div class="field"><label>P(Detection)</label><input type="number" step="0.01" id="t-pd" min="0.01" max="1"></div>
     </div>
-    <div class="row">
-      <div><label>Gate Distance (m)</label><input type="number" step="0.1" id="t-gate" min="0.1"></div>
-      <div><label>P(Detection)</label><input type="number" step="0.01" id="t-pd" min="0.01" max="1"></div>
-    </div>
-    <button class="btn btn-primary" onclick="saveTracker()">Save</button>
+    <button class="btn btn-primary" onclick="saveTracker()">Save Parameters</button>
   </div>
   <div class="card">
-    <h3>Class Confidence Thresholds</h3>
-    <p style="font-size:.85rem;color:#aaa;margin-bottom:.8rem">One row per class. Set after choosing active model.</p>
-    <div id="threshold-list"></div>
-    <div style="display:flex;gap:.5rem;margin-top:.5rem">
-      <button class="btn btn-secondary btn-sm" onclick="addThresholdRow()">+ Add Class</button>
-      <button class="btn btn-primary btn-sm" onclick="saveThresholds()">Save Thresholds</button>
+    <div class="card-header">
+      <h3>Class Thresholds</h3>
+      <button class="btn btn-ghost btn-sm" onclick="addThreshRow()">+ Add</button>
     </div>
+    <div id="thresh-list"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:.75rem" onclick="saveThresh()">Save Thresholds</button>
   </div>
 </div>
 
 <!-- MODELS -->
 <div id="tab-models" class="tab">
   <div class="card">
-    <h3>Active Model</h3>
-    <label>Engine File</label>
-    <select id="active-engine-select"></select>
-    <div class="row">
-      <div><label>Num Classes</label><input type="number" id="active-num-classes" min="1" value="1"></div>
+    <div class="card-header"><h3>Active Model</h3></div>
+    <div class="field"><label>Engine File</label><select id="eng-select"></select></div>
+    <div class="g2">
+      <div class="field"><label>Num Classes</label><input type="number" id="eng-classes" min="1" value="1"></div>
     </div>
-    <label>Labels (one per line)</label>
-    <textarea id="active-labels" rows="6"
-      style="width:100%;background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:.4rem;border-radius:4px;font-size:.88rem;margin-bottom:.6rem"></textarea>
+    <div class="field"><label>Labels (one per line)</label><textarea id="eng-labels" rows="7"></textarea></div>
     <button class="btn btn-primary" onclick="saveActiveModel()">Set Active</button>
   </div>
   <div class="card">
-    <h3>Upload Engine File</h3>
-    <input type="file" id="engine-upload" accept=".engine" style="margin-bottom:.5rem">
-    <button class="btn btn-primary" onclick="uploadEngine()">Upload</button>
+    <div class="card-header"><h3>Upload Engine</h3></div>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <input type="file" id="eng-file" accept=".engine" style="flex:1">
+      <button class="btn btn-primary" onclick="uploadEngine()">Upload</button>
+    </div>
   </div>
   <div class="card">
-    <h3>Uploaded Engines</h3>
-    <div id="engine-list"></div>
+    <div class="card-header"><h3>Uploaded Engines</h3></div>
+    <div id="eng-list"></div>
   </div>
 </div>
 
 <!-- SETTINGS -->
 <div id="tab-settings" class="tab">
   <div class="card">
-    <h3>Export Settings</h3>
-    <p style="font-size:.85rem;color:#aaa;margin-bottom:.8rem">Downloads a ZIP with config database and all engine files.</p>
+    <div class="card-header"><h3>Export</h3></div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.9rem">Download ZIP of config database and all engine files.</p>
     <a href="/settings/export" download="heimdall_settings.zip">
       <button class="btn btn-primary">Download heimdall_settings.zip</button>
     </a>
   </div>
   <div class="card">
-    <h3>Import Settings</h3>
-    <p style="font-size:.85rem;color:#aaa;margin-bottom:.8rem">Upload a previously exported ZIP to restore config and engine files.</p>
-    <input type="file" id="import-file" accept=".zip" style="margin-bottom:.5rem">
-    <button class="btn btn-secondary" onclick="importSettings()">Import ZIP</button>
+    <div class="card-header"><h3>Import</h3></div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.9rem">Upload a previously exported ZIP to restore all settings.</p>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <input type="file" id="import-file" accept=".zip" style="flex:1">
+      <button class="btn btn-secondary" onclick="importSettings()">Import</button>
+    </div>
   </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
-function toast(msg, ok=true) {
+/* ── Utils ─────────────────────────────────────────────── */
+function toast(msg, ok = true) {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.style.background = ok ? '#14532d' : '#7f1d1d';
-  t.style.color = ok ? '#86efac' : '#fca5a5';
+  t.className = ok ? 'ok' : 'err';
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 2500);
 }
@@ -185,112 +204,203 @@ function showTab(name, btn) {
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'cameras') loadCameras();
-  if (name === 'tracker') { loadTracker(); loadThresholds(); }
+  if (name === 'cameras') { scanCameras(); loadActiveCameras(); }
+  if (name === 'tracker') { loadTracker(); loadThresh(); }
   if (name === 'models')  { loadModels(); loadActiveModel(); }
 }
 
-async function api(url, opts={}) {
+async function api(url, opts = {}) {
   const r = await fetch(url, {
-    headers: {'Content-Type': 'application/json', ...(opts.headers||{})},
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
   });
   if (r.ok) return r.json().catch(() => null);
-  const e = await r.json().catch(() => ({detail: r.statusText}));
+  const e = await r.json().catch(() => ({ detail: r.statusText }));
   throw e;
 }
 
-/* CAMERAS */
-let cameras = [];
+/* ── Detection WebSocket + canvas overlay ──────────────── */
+let detWs = null;
+const feeds = {};  // cameraId -> { canvas: CanvasElement | null }
 
-async function loadCameras() {
-  cameras = await api('/cameras/');
-  const el = document.getElementById('camera-list');
-  if (!cameras.length) {
-    el.innerHTML = '<p style="color:#aaa;padding:.5rem">No cameras configured.</p>';
+function initDetWs() {
+  if (detWs && detWs.readyState < 2) return;
+  try {
+    detWs = new WebSocket(`ws://${location.host}/detections/ws`);
+    detWs.onmessage = e => {
+      const { dets } = JSON.parse(e.data);
+      for (const [id, f] of Object.entries(feeds)) {
+        if (f.canvas) drawBboxes(f.canvas, dets, +id);
+      }
+    };
+    detWs.onclose = () => setTimeout(initDetWs, 3000);
+  } catch (_) {}
+}
+
+function drawBboxes(canvas, dets, camId) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 640, 480);
+  for (const d of dets) {
+    if (d.cam !== camId) continue;
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(d.x, d.y, d.w, d.h);
+    const lbl = `${d.cls} ${Math.round(d.conf * 100)}%`;
+    ctx.font = '11px monospace';
+    const tw = ctx.measureText(lbl).width;
+    ctx.fillStyle = 'rgba(7,11,20,.85)';
+    ctx.fillRect(d.x, d.y - 17, tw + 6, 15);
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillText(lbl, d.x + 3, d.y - 5);
+  }
+}
+
+/* ── Cameras ───────────────────────────────────────────── */
+let activeCams = [];
+
+async function scanCameras() {
+  const avail = await api('/cameras/available');
+  const el = document.getElementById('avail-list');
+  if (!avail.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:.82rem">No cameras detected at /dev/video0&#8209;9.</p>';
     return;
   }
-  el.innerHTML = cameras.map(c => `
-    <div class="card" style="display:flex;justify-content:space-between;align-items:center">
+  el.innerHTML = avail.map(c => `
+    <div class="avail-row">
       <div>
-        <strong>${c.name || 'Camera ' + c.id}</strong>
-        <span style="font-size:.8rem;color:#aaa;margin-left:.5rem">${c.device} (${c.camera_type})</span>
-        <span style="font-size:.8rem;color:#aaa;display:block">
-          pos=(${c.tx}, ${c.ty}, ${c.tz}m) pitch=${c.pitch_deg}deg | fx=${c.fx} fy=${c.fy}
-        </span>
+        <div class="avail-dev">${c.device}</div>
+        <div class="avail-sub">${c.name}</div>
       </div>
-      <div style="display:flex;gap:.4rem">
-        <button class="btn btn-secondary btn-sm" onclick="openCameraForm(${c.id})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteCamera(${c.id})">Del</button>
-      </div>
+      <button class="btn btn-primary btn-sm" onclick="activateCam('${c.device}','${c.name}')">Activate</button>
     </div>`).join('');
 }
 
-function openCameraForm(id) {
-  const card = document.getElementById('camera-form-card');
-  card.style.display = 'block';
-  const cam = id ? cameras.find(c => c.id === id) : {};
-  document.getElementById('camera-form-title').textContent = id ? 'Edit Camera' : 'New Camera';
-  document.getElementById('cam-id').value      = id || '';
-  document.getElementById('cam-name').value    = cam.name    || '';
-  document.getElementById('cam-device').value  = cam.device  || '/dev/video0';
-  document.getElementById('cam-type').value    = cam.camera_type || 'usb';
-  document.getElementById('cam-exposure').value = cam.exposure_us || 10000;
-  document.getElementById('cam-fx').value = cam.fx ?? 500;
-  document.getElementById('cam-fy').value = cam.fy ?? 500;
-  document.getElementById('cam-cx').value = cam.cx ?? 320;
-  document.getElementById('cam-cy').value = cam.cy ?? 240;
-  document.getElementById('cam-tx').value = cam.tx ?? 0;
-  document.getElementById('cam-ty').value = cam.ty ?? 0;
-  document.getElementById('cam-tz').value = cam.tz ?? 0.5;
-  document.getElementById('cam-yaw').value   = cam.yaw_deg   ?? 0;
-  document.getElementById('cam-pitch').value = cam.pitch_deg ?? 30;
-  document.getElementById('cam-roll').value  = cam.roll_deg  ?? 0;
-  card.scrollIntoView({behavior:'smooth'});
-}
-
-function closeCameraForm() {
-  document.getElementById('camera-form-card').style.display = 'none';
-}
-
-function camPayload() {
-  return {
-    name: document.getElementById('cam-name').value,
-    device: document.getElementById('cam-device').value,
-    camera_type: document.getElementById('cam-type').value,
-    exposure_us: +document.getElementById('cam-exposure').value,
-    fx: +document.getElementById('cam-fx').value,
-    fy: +document.getElementById('cam-fy').value,
-    cx: +document.getElementById('cam-cx').value,
-    cy: +document.getElementById('cam-cy').value,
-    tx: +document.getElementById('cam-tx').value,
-    ty: +document.getElementById('cam-ty').value,
-    tz: +document.getElementById('cam-tz').value,
-    yaw_deg:   +document.getElementById('cam-yaw').value,
-    pitch_deg: +document.getElementById('cam-pitch').value,
-    roll_deg:  +document.getElementById('cam-roll').value,
-  };
-}
-
-async function saveCamera() {
-  const id = document.getElementById('cam-id').value;
+async function activateCam(device, name) {
   try {
-    if (id) { await api(`/cameras/${id}`, {method:'PUT', body:JSON.stringify(camPayload())}); }
-    else     { await api('/cameras/', {method:'POST', body:JSON.stringify(camPayload())}); }
-    closeCameraForm(); loadCameras(); toast('Camera saved');
-  } catch(e) { toast('Save failed: ' + JSON.stringify(e), false); }
+    await api('/cameras/', { method: 'POST', body: JSON.stringify({ name, device }) });
+    toast(device + ' activated');
+    loadActiveCameras();
+  } catch (e) { toast('Activate failed', false); }
 }
 
-async function deleteCamera(id) {
-  if (!confirm('Delete this camera?')) return;
+async function loadActiveCameras() {
+  activeCams = await api('/cameras/');
+  const el = document.getElementById('active-cam-list');
+  if (!activeCams.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:.82rem">No cameras activated.</p>';
+    return;
+  }
+  el.innerHTML = activeCams.map(c => `
+    <div class="cam-card" id="cc-${c.id}">
+      <div class="cam-card-hdr" onclick="toggleCam(${c.id})">
+        <span style="color:#4ade80;font-size:.6rem">&#9679;</span>
+        <span class="cam-name">${c.name || 'Camera ' + c.id}</span>
+        <span class="cam-dev">${c.device}</span>
+        <span style="margin-left:auto;color:var(--muted)">&#8964;</span>
+      </div>
+      <div class="cam-body" id="cb-${c.id}">
+        <div class="divider">Intrinsics</div>
+        <div class="g4">
+          <div class="field"><label>fx</label><input type="number" id="fx-${c.id}" value="${c.fx}"></div>
+          <div class="field"><label>fy</label><input type="number" id="fy-${c.id}" value="${c.fy}"></div>
+          <div class="field"><label>cx</label><input type="number" id="cx-${c.id}" value="${c.cx}"></div>
+          <div class="field"><label>cy</label><input type="number" id="cy-${c.id}" value="${c.cy}"></div>
+        </div>
+        <div class="divider">Extrinsics (robot frame)</div>
+        <div class="g3">
+          <div class="field"><label>X fwd (m)</label><input type="number" step="0.01" id="tx-${c.id}" value="${c.tx}"></div>
+          <div class="field"><label>Y left (m)</label><input type="number" step="0.01" id="ty-${c.id}" value="${c.ty}"></div>
+          <div class="field"><label>Z height (m)</label><input type="number" step="0.01" id="tz-${c.id}" value="${c.tz}"></div>
+          <div class="field"><label>Yaw (°)</label><input type="number" step="1" id="yaw-${c.id}" value="${c.yaw_deg}"></div>
+          <div class="field"><label>Pitch dn (°)</label><input type="number" step="1" id="pit-${c.id}" value="${c.pitch_deg}"></div>
+          <div class="field"><label>Roll (°)</label><input type="number" step="1" id="rol-${c.id}" value="${c.roll_deg}"></div>
+        </div>
+        <div class="divider">Exposure</div>
+        <div class="g2">
+          <div class="field"><label>Exposure (µs)</label><input type="number" id="exp-${c.id}" value="${c.exposure_us}"></div>
+          <div class="field"><label>Gain</label><input type="number" step="0.1" id="gai-${c.id}" value="${c.gain}"></div>
+        </div>
+        <div class="cam-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveCam(${c.id})">Save</button>
+          <button class="btn btn-danger btn-sm" onclick="removeCam(${c.id})">Remove</button>
+          <label class="feed-toggle-label">
+            <input type="checkbox" id="ft-${c.id}" onchange="toggleFeed(${c.id},this.checked)"> Live Feed
+          </label>
+        </div>
+        <div id="fa-${c.id}"></div>
+      </div>
+    </div>`).join('');
+
+  // Restore feeds that were open
+  for (const c of activeCams) {
+    if (feeds[c.id]?.canvas) {
+      document.getElementById(`ft-${c.id}`).checked = true;
+      renderFeed(c.id, true);
+    }
+  }
+}
+
+function toggleCam(id) {
+  document.getElementById(`cb-${id}`).classList.toggle('open');
+}
+
+function n(id) { return +document.getElementById(id).value; }
+
+async function saveCam(id) {
+  const cam = activeCams.find(c => c.id === id);
   try {
-    const r = await fetch(`/cameras/${id}`, {method:'DELETE'});
-    if (!r.ok) throw new Error(r.statusText);
-    loadCameras(); toast('Camera deleted');
-  } catch(e) { toast('Delete failed', false); }
+    await api(`/cameras/${id}`, { method: 'PUT', body: JSON.stringify({
+      name: cam.name, device: cam.device, camera_type: cam.camera_type,
+      fx: n(`fx-${id}`), fy: n(`fy-${id}`), cx: n(`cx-${id}`), cy: n(`cy-${id}`),
+      tx: n(`tx-${id}`), ty: n(`ty-${id}`), tz: n(`tz-${id}`),
+      yaw_deg: n(`yaw-${id}`), pitch_deg: n(`pit-${id}`), roll_deg: n(`rol-${id}`),
+      exposure_us: n(`exp-${id}`), gain: n(`gai-${id}`),
+    })});
+    toast('Camera saved');
+  } catch (e) { toast('Save failed', false); }
 }
 
-/* TRACKER */
+async function removeCam(id) {
+  if (!confirm('Remove this camera?')) return;
+  try {
+    const r = await fetch(`/cameras/${id}`, { method: 'DELETE' });
+    if (!r.ok) throw 0;
+    delete feeds[id];
+    loadActiveCameras();
+    toast('Camera removed');
+  } catch (_) { toast('Remove failed', false); }
+}
+
+function toggleFeed(id, on) {
+  if (!feeds[id]) feeds[id] = { canvas: null };
+  renderFeed(id, on);
+  if (on) initDetWs();
+}
+
+function renderFeed(id, on) {
+  const area = document.getElementById(`fa-${id}`);
+  if (!area) return;
+  if (!on) {
+    area.innerHTML = '';
+    if (feeds[id]) feeds[id].canvas = null;
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'feed-wrap';
+  const img = document.createElement('img');
+  img.src = `/cameras/${id}/stream`;
+  img.onerror = () => { wrap.innerHTML = '<div class="feed-msg">Camera unavailable — may be in use by pipeline.</div>'; };
+  const canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 480;
+  wrap.appendChild(img);
+  wrap.appendChild(canvas);
+  area.innerHTML = '';
+  area.appendChild(wrap);
+  if (!feeds[id]) feeds[id] = {};
+  feeds[id].canvas = canvas;
+}
+
+/* ── Tracker ───────────────────────────────────────────── */
 async function loadTracker() {
   const d = await api('/tracker/');
   document.getElementById('t-confirm').value = d.confirmation_frames;
@@ -301,125 +411,121 @@ async function loadTracker() {
 
 async function saveTracker() {
   try {
-    await api('/tracker/', {method:'PUT', body:JSON.stringify({
+    await api('/tracker/', { method: 'PUT', body: JSON.stringify({
       confirmation_frames: +document.getElementById('t-confirm').value,
       loss_frames:         +document.getElementById('t-loss').value,
       gate_distance:       +document.getElementById('t-gate').value,
-      clutter_density:     1.0,
+      clutter_density: 1.0,
       p_detection:         +document.getElementById('t-pd').value,
     })});
-    toast('Tracker config saved');
-  } catch(e) { toast('Save failed', false); }
+    toast('Parameters saved');
+  } catch (_) { toast('Save failed', false); }
 }
 
-/* THRESHOLDS */
-let thresholdData = [];
+/* ── Thresholds ────────────────────────────────────────── */
+let threshData = [];
 
-async function loadThresholds() {
-  thresholdData = await api('/thresholds/');
-  renderThresholds();
+async function loadThresh() {
+  threshData = await api('/thresholds/');
+  renderThresh();
 }
 
-function renderThresholds() {
-  document.getElementById('threshold-list').innerHTML = thresholdData.map((t, i) => `
-    <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
-      <input type="number" value="${t.class_id}" min="0" style="width:70px"
-             oninput="thresholdData[${i}].class_id=+this.value">
-      <input type="text" value="${t.class_name}" placeholder="class name" style="flex:1"
-             oninput="thresholdData[${i}].class_name=this.value">
-      <input type="number" value="${t.threshold}" step="0.01" min="0" max="1" style="width:80px"
-             oninput="thresholdData[${i}].threshold=+this.value">
-      <button class="btn btn-danger btn-sm"
-              onclick="thresholdData.splice(${i},1);renderThresholds()">x</button>
+function renderThresh() {
+  document.getElementById('thresh-list').innerHTML = threshData.map((t, i) => `
+    <div class="t-row">
+      <input type="number" value="${t.class_id}" min="0" style="width:64px;flex-shrink:0"
+             oninput="threshData[${i}].class_id=+this.value">
+      <input type="text" value="${t.class_name}" placeholder="class name"
+             oninput="threshData[${i}].class_name=this.value">
+      <input type="number" value="${t.threshold}" step="0.01" min="0" max="1"
+             oninput="threshData[${i}].threshold=+this.value">
+      <button class="btn btn-danger btn-sm" onclick="threshData.splice(${i},1);renderThresh()">&#10005;</button>
     </div>`).join('');
 }
 
-function addThresholdRow() {
-  const nextId = thresholdData.length ? Math.max(...thresholdData.map(t=>t.class_id))+1 : 0;
-  thresholdData.push({class_id:nextId, class_name:'', threshold:0.3});
-  renderThresholds();
+function addThreshRow() {
+  const next = threshData.length ? Math.max(...threshData.map(t => t.class_id)) + 1 : 0;
+  threshData.push({ class_id: next, class_name: '', threshold: 0.3 });
+  renderThresh();
 }
 
-async function saveThresholds() {
+async function saveThresh() {
   try {
-    await api('/thresholds/', {method:'PUT', body:JSON.stringify(thresholdData)});
+    await api('/thresholds/', { method: 'PUT', body: JSON.stringify(threshData) });
     toast('Thresholds saved');
-  } catch(e) { toast('Save failed', false); }
+  } catch (_) { toast('Save failed', false); }
 }
 
-/* MODELS */
+/* ── Models ────────────────────────────────────────────── */
 async function loadModels() {
-  const engines = await api('/models/');
-  const sel = document.getElementById('active-engine-select');
-  sel.innerHTML = '<option value="">-- none --</option>' +
-    engines.map(e => `<option value="${e}">${e}</option>`).join('');
-  document.getElementById('engine-list').innerHTML = engines.length
-    ? engines.map(e => `
-        <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid #2a2a4e">
-          <span>${e}</span>
-          <button class="btn btn-danger btn-sm" onclick="deleteEngine('${e}')">Delete</button>
+  const engs = await api('/models/');
+  const sel = document.getElementById('eng-select');
+  sel.innerHTML = '<option value="">&#8212; none &#8212;</option>' +
+    engs.map(e => `<option value="${e}">${e}</option>`).join('');
+  document.getElementById('eng-list').innerHTML = engs.length
+    ? engs.map(e => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--border)">
+          <span style="font-family:monospace;font-size:.82rem">${e}</span>
+          <button class="btn btn-danger btn-sm" onclick="delEngine('${e}')">Delete</button>
         </div>`).join('')
-    : '<p style="color:#aaa;font-size:.85rem">No engine files uploaded.</p>';
+    : '<p style="color:var(--muted);font-size:.82rem">No engines uploaded.</p>';
 }
 
 async function loadActiveModel() {
   const m = await api('/models/active');
-  document.getElementById('active-engine-select').value = m.engine_filename || '';
-  document.getElementById('active-num-classes').value = m.num_classes;
-  document.getElementById('active-labels').value = (m.labels ?? []).join('\n');
+  document.getElementById('eng-select').value = m.engine_filename || '';
+  document.getElementById('eng-classes').value = m.num_classes;
+  document.getElementById('eng-labels').value = (m.labels ?? []).join('\n');
 }
 
 async function saveActiveModel() {
-  const engineFilename = document.getElementById('active-engine-select').value || null;
-  const labels = document.getElementById('active-labels').value
-    .split('\n').map(s=>s.trim()).filter(Boolean);
+  const fn = document.getElementById('eng-select').value || null;
+  const labels = document.getElementById('eng-labels').value.split('\n').map(s=>s.trim()).filter(Boolean);
   try {
-    await api('/models/active', {method:'PUT', body:JSON.stringify({
-      engine_filename: engineFilename,
-      num_classes: +document.getElementById('active-num-classes').value,
+    await api('/models/active', { method: 'PUT', body: JSON.stringify({
+      engine_filename: fn,
+      num_classes: +document.getElementById('eng-classes').value,
       labels,
     })});
     toast('Active model saved');
-  } catch(e) { toast('Save failed: ' + JSON.stringify(e), false); }
+  } catch (e) { toast('Save failed: ' + JSON.stringify(e), false); }
 }
 
 async function uploadEngine() {
-  const file = document.getElementById('engine-upload').files[0];
-  if (!file) { toast('Select a .engine file first', false); return; }
-  const fd = new FormData();
-  fd.append('file', file);
+  const file = document.getElementById('eng-file').files[0];
+  if (!file) { toast('Select a .engine file', false); return; }
+  const fd = new FormData(); fd.append('file', file);
   try {
-    const r = await fetch('/models/upload', {method:'POST', body:fd});
-    if (!r.ok) { const e = await r.json(); throw e; }
-    toast('Uploaded ' + file.name);
-    loadModels();
-  } catch(e) { toast('Upload failed: ' + JSON.stringify(e), false); }
+    const r = await fetch('/models/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw await r.json();
+    toast('Uploaded ' + file.name); loadModels();
+  } catch (_) { toast('Upload failed', false); }
 }
 
-async function deleteEngine(name) {
+async function delEngine(name) {
   if (!confirm('Delete ' + name + '?')) return;
   try {
-    const r = await fetch('/models/' + name, {method:'DELETE'});
-    if (!r.ok) throw new Error(r.statusText);
+    const r = await fetch('/models/' + name, { method: 'DELETE' });
+    if (!r.ok) throw 0;
     loadModels(); loadActiveModel(); toast('Deleted ' + name);
-  } catch(e) { toast('Delete failed', false); }
+  } catch (_) { toast('Delete failed', false); }
 }
 
-/* SETTINGS */
+/* ── Settings ──────────────────────────────────────────── */
 async function importSettings() {
   const file = document.getElementById('import-file').files[0];
-  if (!file) { toast('Select a .zip file first', false); return; }
-  const fd = new FormData();
-  fd.append('file', file);
+  if (!file) { toast('Select a .zip file', false); return; }
+  const fd = new FormData(); fd.append('file', file);
   try {
-    const r = await fetch('/settings/import', {method:'POST', body:fd});
-    if (!r.ok) { const e = await r.json(); throw e; }
-    toast('Settings imported -- reload to see changes');
-  } catch(e) { toast('Import failed: ' + JSON.stringify(e), false); }
+    const r = await fetch('/settings/import', { method: 'POST', body: fd });
+    if (!r.ok) throw await r.json();
+    toast('Imported — reload to see changes');
+  } catch (_) { toast('Import failed', false); }
 }
 
-/* Init */
-loadCameras();
+/* ── Init ──────────────────────────────────────────────── */
+scanCameras();
+loadActiveCameras();
 </script>
 </body>
 </html>
