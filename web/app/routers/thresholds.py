@@ -24,4 +24,7 @@ def set_thresholds(thresholds: list[ClassThreshold]):
                 "VALUES (?, ?, ?)",
                 (t.class_id, t.class_name, t.threshold),
             )
-    return thresholds
+        rows = db.execute(
+            "SELECT * FROM class_thresholds ORDER BY class_id"
+        ).fetchall()
+        return [ClassThreshold(**dict(r)) for r in rows]
