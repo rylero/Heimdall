@@ -19,7 +19,7 @@ def upload_model(file: UploadFile):
     if not (file.filename or "").endswith(".engine"):
         raise HTTPException(400, "File must have .engine extension")
     MODELS_DIR.mkdir(exist_ok=True)
-    dest = MODELS_DIR / file.filename
+    dest = MODELS_DIR / Path(file.filename).name  # basename only — prevent path traversal
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
     return {"filename": file.filename}
@@ -52,7 +52,9 @@ def set_active(cfg: ModelConfig):
 
 @router.delete("/{filename}", status_code=204)
 def delete_model(filename: str):
-    path = MODELS_DIR / filename
+    if not filename.endswith(".engine"):
+        raise HTTPException(400, "Only .engine files can be deleted")
+    path = MODELS_DIR / Path(filename).name  # basename only
     if not path.exists():
         raise HTTPException(404, f"Model not found: {filename}")
     path.unlink()

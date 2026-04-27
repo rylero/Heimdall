@@ -30,7 +30,7 @@ def test_list_models_after_upload(client):
     client.post("/models/upload",
         files={"file": ("b.engine", b"x", "application/octet-stream")})
     r = client.get("/models/")
-    assert sorted(r.json()) == ["a.engine", "b.engine"]
+    assert r.json() == ["a.engine", "b.engine"]  # must be pre-sorted by API
 
 
 def test_get_active_model_defaults(client):
