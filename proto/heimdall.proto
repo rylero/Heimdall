@@ -39,3 +39,20 @@ message DetectionFrameMsg {
     uint64                 timestamp_ns = 2;
     bool                   healthy      = 3;
 }
+
+// Raw pixel-space detection from DeepStream — published on port 5557 for debug/visualization.
+// Emitted before pose estimation so bboxes are in camera pixel space (640x480).
+message RawDetectionMsg {
+    int32  camera_id  = 1;
+    int32  class_id   = 2;
+    float  confidence = 3;
+    float  left       = 4;
+    float  top        = 5;
+    float  width      = 6;
+    float  height     = 7;
+}
+
+message RawDetectionFrameMsg {
+    repeated RawDetectionMsg detections  = 1;
+    uint64                   timestamp_ns = 2;
+}

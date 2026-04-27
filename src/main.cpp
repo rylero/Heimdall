@@ -38,8 +38,9 @@ int main() {
             .gate_distance       = 1.0f,
         },
         .comm = {
-            .pose_bind_addr   = "tcp://*:5555",
-            .output_bind_addr = "tcp://*:5556",
+            .pose_bind_addr       = "tcp://*:5555",
+            .output_bind_addr     = "tcp://*:5556",
+            .raw_output_bind_addr = "tcp://*:5557",
         },
     };
 

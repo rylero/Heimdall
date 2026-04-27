@@ -51,3 +51,25 @@ def test_list_multiple_cameras(client):
     r = client.get("/cameras/")
     assert len(r.json()) == 2
     assert r.json()[0]["name"] == "A"
+
+def test_list_available_cameras_returns_list(client):
+    # On Windows /dev/video* don't exist — should return empty list, not error
+    r = client.get("/cameras/available")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+def test_stream_nonexistent_camera_returns_404(client):
+    r = client.get("/cameras/999/stream")
+    assert r.status_code == 404
+
+def test_stream_unavailable_device_returns_503(client, monkeypatch):
+    client.post("/cameras/", json={"name": "Test", "device": "/dev/videoNONE"})
+    class _MockCap:
+        def __init__(self, *a, **k): pass
+        def isOpened(self): return False
+        def set(self, *a): pass
+        def read(self): return False, None
+        def release(self): pass
+    monkeypatch.setattr("app.routers.cameras.cv2.VideoCapture", _MockCap)
+    r = client.get("/cameras/1/stream")
+    assert r.status_code == 503
