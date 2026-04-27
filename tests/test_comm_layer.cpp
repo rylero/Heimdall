@@ -65,12 +65,12 @@ TEST_CASE("empty DetectionFrameMsg healthy=false", "[proto]") {
 // ── CommLayer loopback ─────────────────────────────────────────────────────
 
 TEST_CASE("try_recv_pose returns nullopt when no message pending", "[comm]") {
-    CommLayer comm({"inproc://pose_empty", "inproc://out_empty"});
+    CommLayer comm({"inproc://pose_empty", "inproc://out_empty", ""});
     REQUIRE_FALSE(comm.try_recv_pose().has_value());
 }
 
 TEST_CASE("try_recv_pose receives and deserializes robot pose", "[comm]") {
-    CommLayer comm({"inproc://pose_recv", "inproc://out_recv"});
+    CommLayer comm({"inproc://pose_recv", "inproc://out_recv", ""});
 
     // Send a pose directly via raw ZMQ on the same context
     zmq::socket_t sender(comm.context(), zmq::socket_type::push);
@@ -92,7 +92,7 @@ TEST_CASE("try_recv_pose receives and deserializes robot pose", "[comm]") {
 }
 
 TEST_CASE("send_frame serializes and delivers detection frame", "[comm]") {
-    CommLayer comm({"inproc://pose_send", "inproc://out_send"});
+    CommLayer comm({"inproc://pose_send", "inproc://out_send", ""});
 
     zmq::socket_t receiver(comm.context(), zmq::socket_type::pull);
     receiver.connect("inproc://out_send");

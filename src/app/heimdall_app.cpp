@@ -19,9 +19,12 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
         pose = latest_pose_;
     }
 
-    const auto field_dets = pose_estimator_.project(dets, pose);
     const uint64_t timestamp_ns = dets.empty() ? 0ULL : dets.front().timestamp_ns;
 
+    // Publish raw pixel detections for web UI debug feed (before pose estimation)
+    comm_.publish_raw(dets, timestamp_ns);
+
+    const auto field_dets = pose_estimator_.project(dets, pose);
     const auto events = tracker_.update(field_dets,
         static_cast<double>(timestamp_ns) * 1e-9);
 

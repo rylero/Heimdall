@@ -4,11 +4,17 @@
 CommLayer::CommLayer(Config config)
     : ctx_(1),
       pull_sock_(ctx_, zmq::socket_type::pull),
-      push_sock_(ctx_, zmq::socket_type::push)
+      push_sock_(ctx_, zmq::socket_type::push),
+      raw_pub_sock_(ctx_, zmq::socket_type::pub)
 {
-    pull_sock_.set(zmq::sockopt::rcvtimeo, 0);  // 0 = non-blocking
+    pull_sock_.set(zmq::sockopt::rcvtimeo, 0);
     pull_sock_.bind(config.pose_bind_addr);
     push_sock_.bind(config.output_bind_addr);
+
+    if (!config.raw_output_bind_addr.empty()) {
+        raw_pub_sock_.bind(config.raw_output_bind_addr);
+        raw_enabled_ = true;
+    }
 }
 
 std::optional<RobotPose> CommLayer::try_recv_pose() {
@@ -32,14 +38,12 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
 
     for (const auto& ev : events) {
         auto* msg_ev = frame.add_events();
-
         switch (ev.type) {
             case TrackEventType::CONFIRMED: msg_ev->set_type(heimdall::CONFIRMED); break;
             case TrackEventType::UPDATED:   msg_ev->set_type(heimdall::UPDATED);   break;
             case TrackEventType::LOST:      msg_ev->set_type(heimdall::LOST);      break;
-            default: break;  // guard against future enum additions
+            default: break;
         }
-
         auto* obj = msg_ev->mutable_object();
         obj->set_track_id(ev.object.track_id);
         obj->set_class_id(ev.object.class_id);
@@ -52,4 +56,26 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
 
     std::string bytes = frame.SerializeAsString();
     push_sock_.send(zmq::buffer(bytes), zmq::send_flags::none);
+}
+
+void CommLayer::publish_raw(const std::vector<Detection>& detections,
+                             uint64_t timestamp_ns) {
+    if (!raw_enabled_) return;
+
+    heimdall::RawDetectionFrameMsg frame;
+    frame.set_timestamp_ns(timestamp_ns);
+
+    for (const auto& d : detections) {
+        auto* raw = frame.add_detections();
+        raw->set_camera_id(d.camera_id);
+        raw->set_class_id(d.class_id);
+        raw->set_confidence(d.confidence);
+        raw->set_left(d.left);
+        raw->set_top(d.top);
+        raw->set_width(d.width);
+        raw->set_height(d.height);
+    }
+
+    std::string bytes = frame.SerializeAsString();
+    raw_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
 }
