@@ -77,5 +77,5 @@ void CommLayer::publish_raw(const std::vector<Detection>& detections,
     }
 
     std::string bytes = frame.SerializeAsString();
-    raw_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
+    raw_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);  // drop if HWM reached — debug feed, loss acceptable
 }
