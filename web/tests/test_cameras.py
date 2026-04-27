@@ -64,7 +64,6 @@ def test_stream_nonexistent_camera_returns_404(client):
 
 def test_stream_unavailable_device_returns_503(client, monkeypatch):
     client.post("/cameras/", json={"name": "Test", "device": "/dev/videoNONE"})
-    import cv2 as cv2_mod
     class _MockCap:
         def __init__(self, *a, **k): pass
         def isOpened(self): return False

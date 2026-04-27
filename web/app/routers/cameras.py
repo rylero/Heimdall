@@ -1,4 +1,5 @@
 import cv2
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from ..database import get_db
@@ -16,6 +17,17 @@ def list_cameras():
     with get_db() as db:
         rows = db.execute("SELECT * FROM cameras ORDER BY id").fetchall()
         return [CameraConfig(**dict(r)) for r in rows]
+
+
+@router.get("/available")
+def list_available_cameras():
+    """Scan /dev/video0..9 for present devices. Returns empty list on non-Linux."""
+    devices = []
+    for i in range(10):
+        p = Path(f"/dev/video{i}")
+        if p.exists():
+            devices.append({"index": i, "device": str(p), "name": f"USB Camera {i}"})
+    return devices
 
 
 @router.post("/", response_model=CameraConfig, status_code=201)
@@ -49,18 +61,6 @@ def delete_camera(camera_id: int):
         db.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
 
 
-@router.get("/available")
-def list_available_cameras():
-    """Scan /dev/video0..9 for present devices. Returns empty list on non-Linux."""
-    from pathlib import Path
-    devices = []
-    for i in range(10):
-        p = Path(f"/dev/video{i}")
-        if p.exists():
-            devices.append({"index": i, "device": str(p), "name": f"USB Camera {i}"})
-    return devices
-
-
 def _mjpeg_frames(device: str):
     src = int(device) if str(device).isdigit() else device
     cap = cv2.VideoCapture(src)
@@ -90,10 +90,12 @@ def stream_camera(camera_id: int):
         raise HTTPException(404, "Camera not found")
 
     device = row["device"]
+    # Pass the device directly to the generator — it handles unavailability by yielding nothing.
+    # Checking isOpened() here first to give a clean 503 before streaming starts.
     src = int(device) if str(device).isdigit() else device
     cap = cv2.VideoCapture(src)
     opened = cap.isOpened()
-    cap.release()
+    cap.release()  # Release probe; generator opens its own handle
 
     if not opened:
         raise HTTPException(503, "Camera device unavailable (may be in use by pipeline)")
