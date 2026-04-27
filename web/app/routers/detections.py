@@ -1,10 +1,12 @@
 import asyncio
 import json
+import logging
 import os
 import threading
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
+_log = logging.getLogger(__name__)
 
 # Address of the C++ pipeline's raw detection PUB socket.
 # Override via RAW_DET_ADDR env var when Jetson is on a different host.
@@ -27,6 +29,8 @@ def _start_subscriber() -> None:
 
 def _zmq_loop() -> None:
     import zmq
+    from app.proto import heimdall_pb2  # cached after first import
+
     ctx = zmq.Context.instance()
     sock = ctx.socket(zmq.SUB)
     sock.connect(_RAW_DET_ADDR)
@@ -41,7 +45,6 @@ def _zmq_loop() -> None:
         except zmq.ZMQError:
             break
         try:
-            from app.proto import heimdall_pb2
             msg = heimdall_pb2.RawDetectionFrameMsg()
             msg.ParseFromString(data)
             payload = {
@@ -62,8 +65,8 @@ def _zmq_loop() -> None:
             with _frame_lock:
                 global _latest_frame
                 _latest_frame = payload
-        except Exception:
-            pass
+        except Exception as e:
+            _log.debug("raw detection parse error: %s", e)
 
 
 @router.websocket("/ws")
@@ -76,10 +79,7 @@ async def ws_detections(ws: WebSocket) -> None:
             with _frame_lock:
                 frame = _latest_frame
             if frame is not None:
-                try:
-                    await ws.send_text(json.dumps(frame))
-                except Exception:
-                    break
+                await ws.send_text(json.dumps(frame))
             await asyncio.sleep(0.033)  # ~30 Hz
     except WebSocketDisconnect:
         pass
