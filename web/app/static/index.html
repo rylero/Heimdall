@@ -283,8 +283,11 @@ async function saveCamera() {
 
 async function deleteCamera(id) {
   if (!confirm('Delete this camera?')) return;
-  await fetch(`/cameras/${id}`, {method:'DELETE'});
-  loadCameras(); toast('Camera deleted');
+  try {
+    const r = await fetch(`/cameras/${id}`, {method:'DELETE'});
+    if (!r.ok) throw new Error(r.statusText);
+    loadCameras(); toast('Camera deleted');
+  } catch(e) { toast('Delete failed', false); }
 }
 
 /* TRACKER */
@@ -321,11 +324,11 @@ function renderThresholds() {
   document.getElementById('threshold-list').innerHTML = thresholdData.map((t, i) => `
     <div style="display:flex;gap:.5rem;margin-bottom:.4rem;align-items:center">
       <input type="number" value="${t.class_id}" min="0" style="width:70px"
-             onchange="thresholdData[${i}].class_id=+this.value">
+             oninput="thresholdData[${i}].class_id=+this.value">
       <input type="text" value="${t.class_name}" placeholder="class name" style="flex:1"
-             onchange="thresholdData[${i}].class_name=this.value">
+             oninput="thresholdData[${i}].class_name=this.value">
       <input type="number" value="${t.threshold}" step="0.01" min="0" max="1" style="width:80px"
-             onchange="thresholdData[${i}].threshold=+this.value">
+             oninput="thresholdData[${i}].threshold=+this.value">
       <button class="btn btn-danger btn-sm"
               onclick="thresholdData.splice(${i},1);renderThresholds()">x</button>
     </div>`).join('');
@@ -363,7 +366,7 @@ async function loadActiveModel() {
   const m = await api('/models/active');
   document.getElementById('active-engine-select').value = m.engine_filename || '';
   document.getElementById('active-num-classes').value = m.num_classes;
-  document.getElementById('active-labels').value = m.labels.join('\n');
+  document.getElementById('active-labels').value = (m.labels ?? []).join('\n');
 }
 
 async function saveActiveModel() {
@@ -395,8 +398,11 @@ async function uploadEngine() {
 
 async function deleteEngine(name) {
   if (!confirm('Delete ' + name + '?')) return;
-  await fetch('/models/' + name, {method:'DELETE'});
-  loadModels(); loadActiveModel(); toast('Deleted ' + name);
+  try {
+    const r = await fetch('/models/' + name, {method:'DELETE'});
+    if (!r.ok) throw new Error(r.statusText);
+    loadModels(); loadActiveModel(); toast('Deleted ' + name);
+  } catch(e) { toast('Delete failed', false); }
 }
 
 /* SETTINGS */
