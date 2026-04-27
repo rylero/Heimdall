@@ -221,9 +221,11 @@ async function api(url, opts = {}) {
 
 /* ── Detection WebSocket + canvas overlay ──────────────── */
 let detWs = null;
+let detWsEnabled = false;
 const feeds = {};  // cameraId -> { canvas: CanvasElement | null }
 
 function initDetWs() {
+  detWsEnabled = true;
   if (detWs && detWs.readyState < 2) return;
   try {
     detWs = new WebSocket(`ws://${location.host}/detections/ws`);
@@ -233,13 +235,13 @@ function initDetWs() {
         if (f.canvas) drawBboxes(f.canvas, dets, +id);
       }
     };
-    detWs.onclose = () => setTimeout(initDetWs, 3000);
+    detWs.onclose = () => { if (detWsEnabled) setTimeout(initDetWs, 3000); };
   } catch (_) {}
 }
 
 function drawBboxes(canvas, dets, camId) {
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 640, 480);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const d of dets) {
     if (d.cam !== camId) continue;
     ctx.strokeStyle = '#3b82f6';
@@ -444,7 +446,7 @@ function renderThresh() {
 }
 
 function addThreshRow() {
-  const next = threshData.length ? Math.max(...threshData.map(t => t.class_id)) + 1 : 0;
+  const next = threshData.length ? threshData.reduce((m, t) => Math.max(m, t.class_id), -1) + 1 : 0;
   threshData.push({ class_id: next, class_name: '', threshold: 0.3 });
   renderThresh();
 }
