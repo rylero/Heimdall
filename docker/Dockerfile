@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/deepstream-l4t:7.0-triton
+FROM nvcr.io/nvidia/deepstream:9.0-triton-multiarch
 
 RUN apt-get update && apt-get install -y \
     cmake \
