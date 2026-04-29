@@ -72,9 +72,6 @@ $TRTEXEC \
     --onnx="$ONNX_PATH" \
     --saveEngine="$ENGINE_PATH" \
     $PRECISION_FLAGS \
-    --minShapes=input:1x3x${RESOLUTION}x${RESOLUTION} \
-    --optShapes=input:1x3x${RESOLUTION}x${RESOLUTION} \
-    --maxShapes=input:1x3x${RESOLUTION}x${RESOLUTION} \
     --verbose
 
 echo ""
