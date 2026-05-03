@@ -58,12 +58,8 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    // Draw detection overlays on the frame
-    GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
-    if (!osd) throw std::runtime_error("Failed to create nvdsosd");
-    gst_bin_add(GST_BIN(pipeline_), osd);
-
-    // RTSP output chain: nvvideoconvert (NVMM→NV12 system) → videoconvert (NV12→I420) → x264enc → rtph264pay → udpsink
+    // RTSP output: nvinfer (NVMM NV12) → nvvideoconvert → videoconvert (NV12→I420) → x264enc → rtph264pay → udpsink
+    // nvdsosd omitted — reduces NVMM memory pressure; detection overlay handled by web canvas
     GstElement* conv    = gst_element_factory_make("nvvideoconvert", "rtsp_conv");
     GstElement* vcvt    = gst_element_factory_make("videoconvert",   "rtsp_vcvt");
     GstElement* enc     = gst_element_factory_make("x264enc",        "rtsp_enc");
@@ -77,21 +73,19 @@ void DeepStreamPipeline::build() {
 
     g_object_set(enc, "bitrate", 4000, "tune", 4, nullptr);
     g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
-    g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT,
-                          "sync", FALSE, nullptr);
+    g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT, "sync", FALSE, nullptr);
     gst_bin_add_many(GST_BIN(pipeline_), conv, vcvt, enc, pay, udpsink, nullptr);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-    if (!gst_element_link_many(infer, osd, conv, nullptr))
-        throw std::runtime_error("Failed to link infer→osd→nvvideoconvert");
 
-    // Force nvvideoconvert output to system-memory NV12 so videoconvert can handle it
+    // Force nvvideoconvert to output system-memory NV12 for videoconvert
     GstCaps* nv12 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
+    if (!gst_element_link(infer, conv))
+        throw std::runtime_error("Failed to link infer to nvvideoconvert");
     if (!gst_element_link_filtered(conv, vcvt, nv12))
         throw std::runtime_error("Failed to link nvvideoconvert to videoconvert");
     gst_caps_unref(nv12);
-
     if (!gst_element_link_many(vcvt, enc, pay, udpsink, nullptr))
         throw std::runtime_error("Failed to link encoding chain");
 
@@ -114,8 +108,7 @@ void DeepStreamPipeline::build() {
     gst_rtsp_media_factory_set_launch(factory,
         "( udpsrc port=5400 "
         "caps=\"application/x-rtp,media=video,clock-rate=90000,"
-        "encoding-name=H264,payload=96\" "
-        "! rtph264depay ! rtph264pay name=pay0 )");
+        "encoding-name=H264,payload=96\" name=pay0 )");
     gst_rtsp_media_factory_set_shared(factory, TRUE);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
