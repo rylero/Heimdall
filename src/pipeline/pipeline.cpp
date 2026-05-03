@@ -92,8 +92,12 @@ void DeepStreamPipeline::build() {
         GstPad* qr = gst_element_get_static_pad(q_rtsp, "sink");
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
         if (i == 0) {
-            if (!gst_element_link_many(q_rtsp, rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr))
-                throw std::runtime_error("Failed to link RTSP branch");
+            // DIAGNOSTIC: bypass encoding — does q_rtsp flow continuously with fakesink?
+            GstElement* dbg_sink = gst_element_factory_make("fakesink", "rtsp_dbg_sink");
+            g_object_set(dbg_sink, "sync", FALSE, nullptr);
+            gst_bin_add(GST_BIN(pipeline_), dbg_sink);
+            if (!gst_element_link(q_rtsp, dbg_sink))
+                throw std::runtime_error("Failed to link RTSP diagnostic branch");
 
             // Debug probes — remove once RTSP is confirmed working
             auto count_probe = [](GstPad*, GstPadProbeInfo*, gpointer label) -> GstPadProbeReturn {
