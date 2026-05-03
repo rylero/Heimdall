@@ -126,11 +126,10 @@ void DeepStreamPipeline::build() {
 
     GstRTSPMountPoints* mounts = gst_rtsp_server_get_mount_points(rtsp_server_);
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
+    // DIAGNOSTIC: serve a test pattern to confirm the RTSP server works
     gst_rtsp_media_factory_set_launch(factory,
-        "( udpsrc port=5400 "
-        "caps=\"application/x-rtp,media=video,clock-rate=90000,"
-        "encoding-name=H264,payload=96\" "
-        "! rtph264depay ! rtph264pay name=pay0 pt=96 )");
+        "( videotestsrc is-live=1 ! video/x-raw,width=640,height=480,framerate=30/1"
+        " ! x264enc tune=4 ! rtph264pay name=pay0 pt=96 )");
     gst_rtsp_media_factory_set_shared(factory, TRUE);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
