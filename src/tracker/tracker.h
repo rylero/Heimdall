@@ -15,7 +15,7 @@ public:
         float p_detection         = 0.9f; // JPDA P_D
     };
 
-    explicit ObjectTracker(Config config = {});
+    explicit ObjectTracker(Config config = Config{});
 
     // Process one frame. timestamp_s is monotonic seconds (e.g. buf_pts_ns / 1e9).
     // Returns events for this frame: CONFIRMED for newly confirmed tracks,
