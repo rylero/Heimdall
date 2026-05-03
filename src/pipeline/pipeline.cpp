@@ -15,13 +15,6 @@ DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
 
-    // gst_caps_feature_name_is_valid() rejects unknown caps features by checking
-    // g_quark_try_string(). "memory:NVMM" quarks are registered when element
-    // instances create their pad templates — not during plugin_init(). Since
-    // gst_parse_bin_from_description validates caps features BEFORE creating
-    // any elements, we register the quark ourselves so validation passes.
-    g_quark_from_string("memory:NVMM");
-
     pipeline_ = gst_pipeline_new("heimdall");
     if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
 

@@ -15,7 +15,10 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1"
                << " ! jpegdec ! nvvidconv"
-               << " ! video/x-raw(memory:NVMM),format=NV12";
+               << " ! video/x-raw,format=NV12";
+            // Note: no explicit memory:NVMM feature here — nvstreammux's sink pad
+            // template only accepts NVMM, so caps negotiation propagates that
+            // requirement upstream to nvvidconv automatically.
             break;
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
