@@ -78,15 +78,7 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-
-    // Force nvvideoconvert to output system-memory NV12 for videoconvert
-    GstCaps* nv12 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
-    if (!gst_element_link(infer, conv))
-        throw std::runtime_error("Failed to link infer to nvvideoconvert");
-    if (!gst_element_link_filtered(conv, vcvt, nv12))
-        throw std::runtime_error("Failed to link nvvideoconvert to videoconvert");
-    gst_caps_unref(nv12);
-    if (!gst_element_link_many(vcvt, enc, pay, udpsink, nullptr))
+    if (!gst_element_link_many(infer, conv, vcvt, enc, pay, udpsink, nullptr))
         throw std::runtime_error("Failed to link encoding chain");
 
     // Probe on infer src to extract detections (before osd renders boxes)
