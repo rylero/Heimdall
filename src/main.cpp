@@ -41,7 +41,6 @@ int main() {
             .pose_bind_addr       = "tcp://*:5555",
             .output_bind_addr     = "tcp://*:5556",
             .raw_output_bind_addr = "tcp://*:5557",
-            .frame_bind_addr      = "tcp://*:5558",
         },
     };
 

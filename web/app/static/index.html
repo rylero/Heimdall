@@ -379,7 +379,7 @@ function toggleFeed(id, on) {
   if (on) initDetWs();
 }
 
-function renderFeed(id, on) {
+async function renderFeed(id, on) {
   const area = document.getElementById(`fa-${id}`);
   if (!area) return;
   if (!on) {
@@ -387,19 +387,16 @@ function renderFeed(id, on) {
     if (feeds[id]) feeds[id].canvas = null;
     return;
   }
-  const wrap = document.createElement('div');
-  wrap.className = 'feed-wrap';
-  const img = document.createElement('img');
-  img.src = `/cameras/${id}/stream`;
-  img.onerror = () => { wrap.innerHTML = '<div class="feed-msg">Camera unavailable — may be in use by pipeline.</div>'; };
-  const canvas = document.createElement('canvas');
-  canvas.width = 640; canvas.height = 480;
-  wrap.appendChild(img);
-  wrap.appendChild(canvas);
-  area.innerHTML = '';
-  area.appendChild(wrap);
+  const r = await fetch(`/cameras/${id}/stream`);
+  const { rtsp_url } = await r.json();
+  const url = rtsp_url.replace('JETSON_IP', location.hostname);
+  area.innerHTML = `<div class="feed-msg" style="text-align:left;padding:1rem">
+    <div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">RTSP Stream</div>
+    <code style="color:var(--accent);font-size:.85rem">${url}</code>
+    <div style="margin-top:.6rem;font-size:.75rem;color:var(--muted)">Open in VLC → Media → Open Network Stream</div>
+  </div>`;
   if (!feeds[id]) feeds[id] = {};
-  feeds[id].canvas = canvas;
+  feeds[id].canvas = null;
 }
 
 /* ── Tracker ───────────────────────────────────────────── */

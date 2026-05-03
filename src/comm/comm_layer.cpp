@@ -5,8 +5,7 @@ CommLayer::CommLayer(Config config)
     : ctx_(1),
       pull_sock_(ctx_, zmq::socket_type::pull),
       push_sock_(ctx_, zmq::socket_type::push),
-      raw_pub_sock_(ctx_, zmq::socket_type::pub),
-      frame_pub_sock_(ctx_, zmq::socket_type::pub)
+      raw_pub_sock_(ctx_, zmq::socket_type::pub)
 {
     pull_sock_.set(zmq::sockopt::rcvtimeo, 0);
     pull_sock_.bind(config.pose_bind_addr);
@@ -15,10 +14,6 @@ CommLayer::CommLayer(Config config)
     if (!config.raw_output_bind_addr.empty()) {
         raw_pub_sock_.bind(config.raw_output_bind_addr);
         raw_enabled_ = true;
-    }
-    if (!config.frame_bind_addr.empty()) {
-        frame_pub_sock_.bind(config.frame_bind_addr);
-        frame_enabled_ = true;
     }
 }
 
@@ -85,7 +80,3 @@ void CommLayer::publish_raw(const std::vector<Detection>& detections,
     raw_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
 }
 
-void CommLayer::publish_frame(const uint8_t* jpeg_data, size_t size) {
-    if (!frame_enabled_) return;
-    frame_pub_sock_.send(zmq::buffer(jpeg_data, size), zmq::send_flags::dontwait);
-}

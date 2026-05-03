@@ -17,18 +17,18 @@ NUM_CLASSES = 3                  # update to match your dataset
 RESOLUTION  = 560                # RFDETRNano default; must match export_onnx.py
 
 model = RFDETRNano(
-    num_classes=NUM_CLASSES,
-    resolution=RESOLUTION,
+    #num_classes=NUM_CLASSES,
+    #resolution=RESOLUTION,
 )
 
-model.train(
-    dataset_dir=DATASET_DIR,
-    epochs=100,
-    batch_size=4,
-    grad_accum_steps=4,
-    lr=1e-4,
-    output_dir=OUTPUT_DIR,
-)
+#model.train(
+    #dataset_dir=DATASET_DIR,
+    #epochs=100,
+    #batch_size=4,
+    #grad_accum_steps=4,
+    #lr=1e-4,
+    #output_dir=OUTPUT_DIR,
+#)
 
 # Export best checkpoint to ONNX immediately after training
 checkpoint = Path(OUTPUT_DIR) / "best_model.pth"

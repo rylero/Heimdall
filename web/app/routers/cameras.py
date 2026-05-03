@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from ..database import get_db
 from ..models import CameraConfig
 
-_FRAME_ADDR = os.getenv("FRAME_ADDR", "tcp://localhost:5558")
+_RTSP_HOST = os.getenv("RTSP_HOST", "")  # override if Jetson IP needed
+_RTSP_PORT = int(os.getenv("RTSP_PORT", "8554"))
 
 router = APIRouter()
 
@@ -63,30 +64,10 @@ def delete_camera(camera_id: int):
         db.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
 
 
-def _zmq_mjpeg_frames():
-    import zmq
-    ctx = zmq.Context.instance()
-    sock = ctx.socket(zmq.SUB)
-    sock.connect(_FRAME_ADDR)
-    sock.setsockopt(zmq.SUBSCRIBE, b"")
-    sock.setsockopt(zmq.RCVTIMEO, 2000)
-    try:
-        while True:
-            try:
-                jpeg = sock.recv()
-            except zmq.Again:
-                break
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
-    finally:
-        sock.close()
-
-
 @router.get("/{camera_id}/stream")
-def stream_camera(camera_id: int):
+def stream_camera(camera_id: int, request_host: str = ""):
     with get_db() as db:
         if not db.execute("SELECT 1 FROM cameras WHERE id = ?", (camera_id,)).fetchone():
             raise HTTPException(404, "Camera not found")
-    return StreamingResponse(
-        _zmq_mjpeg_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-    )
+    host = _RTSP_HOST or "JETSON_IP"
+    return JSONResponse({"rtsp_url": f"rtsp://{host}:{_RTSP_PORT}/stream"})

@@ -1,1 +1,16 @@
 .worktrees/
+
+# Large model files — store via releases or external storage
+*.pth
+*.pt
+train/output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Runtime data
+web/data/

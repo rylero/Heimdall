@@ -1,17 +1,17 @@
 #include "pipeline.h"
-#include <gst/app/gstappsink.h>
 #include <stdexcept>
 #include <string>
+
+static constexpr int RTSP_UDP_PORT  = 5400;
+static constexpr int RTSP_SERV_PORT = 8554;
 
 DeepStreamPipeline::DeepStreamPipeline(
     std::vector<CameraConfig> cameras,
     std::string               infer_config_path,
-    DetectionCallback         on_detection,
-    FrameCallback             on_frame
+    DetectionCallback         on_detection
 ) : cameras_(std::move(cameras)),
     infer_config_path_(std::move(infer_config_path)),
-    on_detection_(std::move(on_detection)),
-    on_frame_(std::move(on_frame)) {}
+    on_detection_(std::move(on_detection)) {}
 
 DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 
@@ -58,59 +58,31 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    GstElement* sink = gst_element_factory_make("fakesink", "sink");
-    if (!sink) throw std::runtime_error("Failed to create fakesink");
-    g_object_set(sink, "sync", FALSE, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), sink);
+    // Draw detection overlays on the frame
+    GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
+    if (!osd) throw std::runtime_error("Failed to create nvdsosd");
+    gst_bin_add(GST_BIN(pipeline_), osd);
+
+    // RTSP output chain: nvvideoconvert → nvv4l2h264enc → rtph264pay → udpsink
+    GstElement* conv    = gst_element_factory_make("nvvideoconvert", "rtsp_conv");
+    GstElement* enc     = gst_element_factory_make("nvv4l2h264enc",  "rtsp_enc");
+    GstElement* pay     = gst_element_factory_make("rtph264pay",     "rtsp_pay");
+    GstElement* udpsink = gst_element_factory_make("udpsink",        "rtsp_udp");
+    if (!conv || !enc || !pay || !udpsink)
+        throw std::runtime_error("Failed to create RTSP pipeline elements");
+
+    g_object_set(enc,     "bitrate", 4000000, nullptr);
+    g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
+    g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT,
+                          "sync", FALSE, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline_), conv, enc, pay, udpsink, nullptr);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
+    if (!gst_element_link_many(infer, osd, conv, enc, pay, udpsink, nullptr))
+        throw std::runtime_error("Failed to link RTSP chain");
 
-    if (on_frame_) {
-        // Preview branch: infer → tee → [fakesink | nvvideoconvert → jpegenc → appsink]
-        GstElement* tee     = gst_element_factory_make("tee",           "preview_tee");
-        GstElement* q1      = gst_element_factory_make("queue",         "q_infer");
-        GstElement* q2      = gst_element_factory_make("queue",         "q_preview");
-        GstElement* conv    = gst_element_factory_make("nvvideoconvert","preview_conv");
-        GstElement* enc     = gst_element_factory_make("jpegenc",       "preview_enc");
-        GstElement* appsink = gst_element_factory_make("appsink",       "preview_appsink");
-        if (!tee || !q1 || !q2 || !conv || !enc || !appsink)
-            throw std::runtime_error("Failed to create preview pipeline elements");
-
-        g_object_set(enc,     "quality", 60, nullptr);
-        g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE,
-                               "max-buffers", 1, "drop", TRUE, nullptr);
-
-        gst_bin_add_many(GST_BIN(pipeline_), tee, q1, q2, conv, enc, appsink, nullptr);
-
-        if (!gst_element_link(infer, tee))
-            throw std::runtime_error("Failed to link infer to tee");
-
-        // Branch 1: tee → q1 → fakesink
-        GstPad* tp1 = gst_element_get_request_pad(tee, "src_%u");
-        GstPad* qs1 = gst_element_get_static_pad(q1, "sink");
-        gst_pad_link(tp1, qs1);
-        gst_object_unref(tp1); gst_object_unref(qs1);
-        if (!gst_element_link(q1, sink))
-            throw std::runtime_error("Failed to link q1 to fakesink");
-
-        // Branch 2: tee → q2 → nvvideoconvert → jpegenc → appsink
-        GstPad* tp2 = gst_element_get_request_pad(tee, "src_%u");
-        GstPad* qs2 = gst_element_get_static_pad(q2, "sink");
-        gst_pad_link(tp2, qs2);
-        gst_object_unref(tp2); gst_object_unref(qs2);
-        if (!gst_element_link(q2, conv) || !gst_element_link(conv, enc) || !gst_element_link(enc, appsink))
-            throw std::runtime_error("Failed to link preview branch");
-
-        GstAppSinkCallbacks sink_cbs{};
-        sink_cbs.new_sample = appsink_cb;
-        gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &sink_cbs, &on_frame_, nullptr);
-    } else {
-        if (!gst_element_link(infer, sink))
-            throw std::runtime_error("Failed to link infer to sink");
-    }
-
-    // Install pad probe on nvinfer src pad to extract detections each frame
+    // Probe on infer src to extract detections (before osd renders boxes)
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
     gst_pad_add_probe(infer_src, GST_PAD_PROBE_TYPE_BUFFER,
         detection_probe_cb, &on_detection_, nullptr);
@@ -119,20 +91,23 @@ void DeepStreamPipeline::build() {
     GstBus* bus = gst_element_get_bus(pipeline_);
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
-}
 
-GstFlowReturn DeepStreamPipeline::appsink_cb(GstAppSink* appsink, gpointer user_data) {
-    GstSample* sample = gst_app_sink_pull_sample(appsink);
-    if (!sample) return GST_FLOW_OK;
-    GstBuffer* buf = gst_sample_get_buffer(sample);
-    GstMapInfo map;
-    if (gst_buffer_map(buf, &map, GST_MAP_READ)) {
-        auto* cb = static_cast<FrameCallback*>(user_data);
-        (*cb)(map.data, map.size);
-        gst_buffer_unmap(buf, &map);
-    }
-    gst_sample_unref(sample);
-    return GST_FLOW_OK;
+    // RTSP server: mounts a udpsrc pointing at the H.264 RTP stream
+    rtsp_server_ = gst_rtsp_server_new();
+    gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
+
+    GstRTSPMountPoints* mounts = gst_rtsp_server_get_mount_points(rtsp_server_);
+    GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
+    gst_rtsp_media_factory_set_launch(factory,
+        "( udpsrc name=pay0 port=5400 "
+        "caps=\"application/x-rtp,media=video,clock-rate=90000,"
+        "encoding-name=H264,payload=96\" )");
+    gst_rtsp_media_factory_set_shared(factory, TRUE);
+    gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
+    g_object_unref(mounts);
+    gst_rtsp_server_attach(rtsp_server_, nullptr);
+
+    std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
@@ -171,5 +146,9 @@ void DeepStreamPipeline::stop() {
         gst_element_set_state(pipeline_, GST_STATE_NULL);
         gst_object_unref(pipeline_);
         pipeline_ = nullptr;
+    }
+    if (rtsp_server_) {
+        g_object_unref(rtsp_server_);
+        rtsp_server_ = nullptr;
     }
 }

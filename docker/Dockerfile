@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
+    libgstreamer-rtsp-server-1.0-dev \
     git \
     ccache \
     && rm -rf /var/lib/apt/lists/*
@@ -43,9 +44,5 @@ RUN --mount=type=cache,target=/root/.ccache \
 COPY . .
 RUN --mount=type=cache,target=/root/.ccache \
     cmake --build build --parallel $(nproc)
-
-# Install gstreamer-plugins-good after build so the build cache is unaffected
-RUN apt-get update && apt-get install -y gstreamer1.0-plugins-good \
-    && rm -rf /var/lib/apt/lists/*
 
 CMD ["/app/build/heimdall"]
