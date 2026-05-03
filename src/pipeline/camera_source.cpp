@@ -14,9 +14,9 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",width="  << cfg.width
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1"
-               << " ! jpegdec ! nvvidconv";
-            // nvstreammux sink only accepts video/x-raw(memory:NVMM)/NV12, so
-            // caps negotiation automatically pulls the right format from nvvidconv.
+               << " ! jpegdec";
+            // nvvidconv (NVMM conversion) added in pipeline.cpp after a tee so the
+            // RTSP branch can split off in system memory before NVMM conversion.
             break;
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
