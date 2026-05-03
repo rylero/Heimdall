@@ -63,28 +63,36 @@ void DeepStreamPipeline::build() {
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    // RTSP output chain: nvvideoconvert → x264enc → rtph264pay → udpsink
-    // x264enc uses host libx264.so.163 via volume mount; libgstx264.so from host GST_PLUGIN_PATH
+    // RTSP output chain: nvvideoconvert (NVMM→NV12 system) → videoconvert (NV12→I420) → x264enc → rtph264pay → udpsink
     GstElement* conv    = gst_element_factory_make("nvvideoconvert", "rtsp_conv");
+    GstElement* vcvt    = gst_element_factory_make("videoconvert",   "rtsp_vcvt");
     GstElement* enc     = gst_element_factory_make("x264enc",        "rtsp_enc");
     GstElement* pay     = gst_element_factory_make("rtph264pay",     "rtsp_pay");
     GstElement* udpsink = gst_element_factory_make("udpsink",        "rtsp_udp");
     if (!conv)    throw std::runtime_error("Failed to create nvvideoconvert");
+    if (!vcvt)    throw std::runtime_error("Failed to create videoconvert");
     if (!enc)     throw std::runtime_error("Failed to create x264enc");
     if (!pay)     throw std::runtime_error("Failed to create rtph264pay");
     if (!udpsink) throw std::runtime_error("Failed to create udpsink");
 
-    // x264enc bitrate in kbits/s; tune=4 = zerolatency for low-latency RTSP
     g_object_set(enc, "bitrate", 4000, "tune", 4, nullptr);
     g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
     g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT,
                           "sync", FALSE, nullptr);
-    gst_bin_add_many(GST_BIN(pipeline_), conv, enc, pay, udpsink, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline_), conv, vcvt, enc, pay, udpsink, nullptr);
+
+    // Force nvvideoconvert to output system-memory NV12 so videoconvert can process it
+    GstCaps* nv12 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-    if (!gst_element_link_many(infer, osd, conv, enc, pay, udpsink, nullptr))
-        throw std::runtime_error("Failed to link RTSP chain");
+    if (!gst_element_link_many(infer, osd, nullptr))
+        throw std::runtime_error("Failed to link infer to osd");
+    if (!gst_element_link_filtered(osd, conv, nv12))  // osd NVMM → nvvideoconvert system NV12
+        throw std::runtime_error("Failed to link osd to nvvideoconvert");
+    gst_caps_unref(nv12);
+    if (!gst_element_link_many(conv, vcvt, enc, pay, udpsink, nullptr))
+        throw std::runtime_error("Failed to link encoding chain");
 
     // Probe on infer src to extract detections (before osd renders boxes)
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
