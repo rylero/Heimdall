@@ -24,6 +24,9 @@ services:
     volumes:
       - ../models:/app/models
       - heimdall-data:/app/data
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
     restart: unless-stopped
 
 volumes:
