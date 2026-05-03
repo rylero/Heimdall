@@ -114,8 +114,8 @@ target_include_directories(heimdall_comm PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_link_libraries(heimdall_comm
-    PUBLIC  heimdall_proto heimdall_tracker heimdall_pose
-    PRIVATE libzmq cppzmq
+    PUBLIC  heimdall_proto heimdall_tracker heimdall_pose cppzmq
+    PRIVATE libzmq
 )
 
 # ---------------------------------------------------------------------------
