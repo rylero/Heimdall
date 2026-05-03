@@ -14,6 +14,15 @@ DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
+
+    // Force-load nvvidconv so its plugin_init() runs and registers the
+    // memory:NVMM allocator GType. Without this, gst_parse_bin_from_description
+    // sees memory:NVMM before any plugin is loaded and treats NVMM as an element name.
+    {
+        GstElement* tmp = gst_element_factory_make("nvvidconv", nullptr);
+        if (tmp) gst_object_unref(tmp);
+    }
+
     pipeline_ = gst_pipeline_new("heimdall");
     if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
 
