@@ -4,15 +4,13 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     runtime: nvidia
+    privileged: true
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - ../models:/app/models
       - ../config:/app/config
       - heimdall-data:/app/data
-    devices:
-      - /dev/video0:/dev/video0
-      - /dev/video1:/dev/video1
     network_mode: host
 
   heimdall-web:
