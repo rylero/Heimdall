@@ -63,17 +63,18 @@ void DeepStreamPipeline::build() {
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    // RTSP output chain: nvvideoconvert → avenc_h264 → rtph264pay → udpsink
+    // RTSP output chain: nvvideoconvert → x264enc → rtph264pay → udpsink
     GstElement* conv    = gst_element_factory_make("nvvideoconvert", "rtsp_conv");
-    GstElement* enc     = gst_element_factory_make("avenc_h264",     "rtsp_enc");
+    GstElement* enc     = gst_element_factory_make("x264enc",        "rtsp_enc");
     GstElement* pay     = gst_element_factory_make("rtph264pay",     "rtsp_pay");
     GstElement* udpsink = gst_element_factory_make("udpsink",        "rtsp_udp");
     if (!conv)    throw std::runtime_error("Failed to create nvvideoconvert");
-    if (!enc)     throw std::runtime_error("Failed to create avenc_h264 — gstreamer1.0-libav missing?");
+    if (!enc)     throw std::runtime_error("Failed to create x264enc — gstreamer1.0-plugins-ugly missing?");
     if (!pay)     throw std::runtime_error("Failed to create rtph264pay");
     if (!udpsink) throw std::runtime_error("Failed to create udpsink");
 
-    g_object_set(enc,     "bitrate", 4000000, nullptr);
+    // x264enc bitrate is in kbits/s; tune=4 = zerolatency for RTSP
+    g_object_set(enc, "bitrate", 4000, "tune", 4, nullptr);
     g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
     g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT,
                           "sync", FALSE, nullptr);
