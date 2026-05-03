@@ -58,15 +58,12 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    // RTSP output: nvinfer (NVMM NV12) → nvvideoconvert → videoconvert (NV12→I420) → x264enc → rtph264pay → udpsink
-    // nvdsosd omitted — reduces NVMM memory pressure; detection overlay handled by web canvas
-    GstElement* conv    = gst_element_factory_make("nvvideoconvert", "rtsp_conv");
-    GstElement* vcvt    = gst_element_factory_make("videoconvert",   "rtsp_vcvt");
-    GstElement* enc     = gst_element_factory_make("x264enc",        "rtsp_enc");
-    GstElement* pay     = gst_element_factory_make("rtph264pay",     "rtsp_pay");
-    GstElement* udpsink = gst_element_factory_make("udpsink",        "rtsp_udp");
-    if (!conv)    throw std::runtime_error("Failed to create nvvideoconvert");
-    if (!vcvt)    throw std::runtime_error("Failed to create videoconvert");
+    // RTSP: nvvidconv (Jetson L4T, converts NVMM→system I420) → x264enc → rtph264pay → udpsink
+    GstElement* conv    = gst_element_factory_make("nvvidconv",  "rtsp_conv");
+    GstElement* enc     = gst_element_factory_make("x264enc",    "rtsp_enc");
+    GstElement* pay     = gst_element_factory_make("rtph264pay", "rtsp_pay");
+    GstElement* udpsink = gst_element_factory_make("udpsink",    "rtsp_udp");
+    if (!conv)    throw std::runtime_error("Failed to create nvvidconv");
     if (!enc)     throw std::runtime_error("Failed to create x264enc");
     if (!pay)     throw std::runtime_error("Failed to create rtph264pay");
     if (!udpsink) throw std::runtime_error("Failed to create udpsink");
@@ -74,12 +71,20 @@ void DeepStreamPipeline::build() {
     g_object_set(enc, "bitrate", 4000, "tune", 4, nullptr);
     g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
     g_object_set(udpsink, "host", "127.0.0.1", "port", RTSP_UDP_PORT, "sync", FALSE, nullptr);
-    gst_bin_add_many(GST_BIN(pipeline_), conv, vcvt, enc, pay, udpsink, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline_), conv, enc, pay, udpsink, nullptr);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-    if (!gst_element_link_many(infer, conv, vcvt, enc, pay, udpsink, nullptr))
-        throw std::runtime_error("Failed to link encoding chain");
+
+    // nvvidconv outputs system-memory I420 directly — x264enc can use it without videoconvert
+    GstCaps* i420 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "I420", nullptr);
+    if (!gst_element_link(infer, conv))
+        throw std::runtime_error("Failed to link infer to nvvidconv");
+    if (!gst_element_link_filtered(conv, enc, i420))
+        throw std::runtime_error("Failed to link nvvidconv to x264enc (I420 caps)");
+    gst_caps_unref(i420);
+    if (!gst_element_link_many(enc, pay, udpsink, nullptr))
+        throw std::runtime_error("Failed to link x264enc chain");
 
     // Probe on infer src to extract detections (before osd renders boxes)
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
