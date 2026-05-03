@@ -5,17 +5,19 @@
 #include "track_event.h"
 #include <vector>
 
+struct ObjectTrackerConfig {
+    int   confirmation_frames = 3;    // frames_seen threshold: TENTATIVE -> CONFIRMED
+    int   loss_frames         = 5;    // frames_missed threshold: CONFIRMED -> LOST
+    float gate_distance       = 1.0f; // meters
+    float clutter_density     = 1.0f; // JPDA lambda
+    float p_detection         = 0.9f; // JPDA P_D
+};
+
 class ObjectTracker {
 public:
-    struct Config {
-        int   confirmation_frames = 3;    // frames_seen threshold: TENTATIVE -> CONFIRMED
-        int   loss_frames         = 5;    // frames_missed threshold: CONFIRMED -> LOST
-        float gate_distance       = 1.0f; // meters
-        float clutter_density     = 1.0f; // JPDA lambda
-        float p_detection         = 0.9f; // JPDA P_D
-    };
+    using Config = ObjectTrackerConfig;
 
-    explicit ObjectTracker(Config config = Config{});
+    explicit ObjectTracker(Config config = {});
 
     // Process one frame. timestamp_s is monotonic seconds (e.g. buf_pts_ns / 1e9).
     // Returns events for this frame: CONFIRMED for newly confirmed tracks,
