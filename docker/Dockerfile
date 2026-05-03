@@ -44,4 +44,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.ccache \
     cmake --build build --parallel $(nproc)
 
+# Install gstreamer-plugins-good after build so the build cache is unaffected
+RUN apt-get update && apt-get install -y gstreamer1.0-plugins-good \
+    && rm -rf /var/lib/apt/lists/*
+
 CMD ["/app/build/heimdall"]
