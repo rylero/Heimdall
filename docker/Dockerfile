@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
-    libgstreamer-rtsp-server-1.0-dev \
+    libgstrtspserver-1.0-dev \
     git \
     ccache \
     && rm -rf /var/lib/apt/lists/*
