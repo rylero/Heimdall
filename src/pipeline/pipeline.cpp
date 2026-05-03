@@ -94,6 +94,16 @@ void DeepStreamPipeline::build() {
         if (i == 0) {
             if (!gst_element_link_many(q_rtsp, rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr))
                 throw std::runtime_error("Failed to link RTSP branch");
+
+            // Debug probes — remove once RTSP is confirmed working
+            auto count_probe = [](GstPad*, GstPadProbeInfo*, gpointer label) -> GstPadProbeReturn {
+                static int n = 0;
+                if (++n % 90 == 1) g_print("RTSP probe [%s]: %d buffers\n", (const char*)label, n);
+                return GST_PAD_PROBE_OK;
+            };
+            GstPad* pq = gst_element_get_static_pad(q_rtsp,   "src"); gst_pad_add_probe(pq, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"q_rtsp",   nullptr); gst_object_unref(pq);
+            GstPad* pe = gst_element_get_static_pad(rtsp_enc,  "src"); gst_pad_add_probe(pe, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"x264enc",  nullptr); gst_object_unref(pe);
+            GstPad* pp = gst_element_get_static_pad(rtsp_pay,  "src"); gst_pad_add_probe(pp, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"rtph264pay",nullptr); gst_object_unref(pp);
         } else {
             GstElement* rtsp_drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
             gst_bin_add(GST_BIN(pipeline_), rtsp_drop);
