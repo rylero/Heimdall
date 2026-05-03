@@ -15,12 +15,15 @@ DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
 
-    // Force-load nvvidconv so its plugin_init() runs and registers the
-    // memory:NVMM allocator GType. Without this, gst_parse_bin_from_description
-    // sees memory:NVMM before any plugin is loaded and treats NVMM as an element name.
+    // GStreamer lazy-loads plugins, so memory:NVMM isn't registered as a caps
+    // feature until whichever plugin owns the NVMM allocator is actually loaded.
+    // Force-load all registry plugins now so gst_parse_bin_from_description can
+    // resolve memory:NVMM caps without misinterpreting NVMM as an element name.
     {
-        GstElement* tmp = gst_element_factory_make("nvvidconv", nullptr);
-        if (tmp) gst_object_unref(tmp);
+        GList* plugins = gst_registry_get_plugin_list(gst_registry_get());
+        for (GList* l = plugins; l; l = l->next)
+            gst_plugin_load(GST_PLUGIN(l->data));
+        gst_plugin_list_free(plugins);
     }
 
     pipeline_ = gst_pipeline_new("heimdall");
