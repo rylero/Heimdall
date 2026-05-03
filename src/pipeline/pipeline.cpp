@@ -15,16 +15,12 @@ DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
 
-    // GStreamer lazy-loads plugins, so memory:NVMM isn't registered as a caps
-    // feature until whichever plugin owns the NVMM allocator is actually loaded.
-    // Force-load all registry plugins now so gst_parse_bin_from_description can
-    // resolve memory:NVMM caps without misinterpreting NVMM as an element name.
-    {
-        GList* plugins = gst_registry_get_plugin_list(gst_registry_get());
-        for (GList* l = plugins; l; l = l->next)
-            gst_plugin_load(GST_PLUGIN(l->data));
-        gst_plugin_list_free(plugins);
-    }
+    // gst_caps_feature_name_is_valid() rejects unknown caps features by checking
+    // g_quark_try_string(). "memory:NVMM" quarks are registered when element
+    // instances create their pad templates — not during plugin_init(). Since
+    // gst_parse_bin_from_description validates caps features BEFORE creating
+    // any elements, we register the quark ourselves so validation passes.
+    g_quark_from_string("memory:NVMM");
 
     pipeline_ = gst_pipeline_new("heimdall");
     if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
