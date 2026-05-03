@@ -7,10 +7,14 @@ services:
     privileged: true
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
+      - GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0-host
+      - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:/usr/local/cuda/lib64
     volumes:
       - ../models:/app/models
       - ../config:/app/config
       - heimdall-data:/app/data
+      - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/local/lib/gstreamer-1.0-host:ro
+      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
     network_mode: host
 
   heimdall-web:

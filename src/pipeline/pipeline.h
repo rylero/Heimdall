@@ -16,7 +16,7 @@ public:
     ~DeepStreamPipeline();
 
     void build();
-    void run();    // blocks until stop() or error
+    void run();
     void stop();
 
 private:

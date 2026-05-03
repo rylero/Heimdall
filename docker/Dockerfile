@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
     libgstrtspserver-1.0-dev \
-    gstreamer1.0-plugins-ugly \
     git \
     ccache \
     && rm -rf /var/lib/apt/lists/*
