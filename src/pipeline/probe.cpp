@@ -30,6 +30,6 @@ GstPadProbeReturn detection_probe_cb(GstPad*, GstPadProbeInfo* info, gpointer us
         }
     }
 
-    if (!detections.empty()) (*cb)(detections);
+    (*cb)(detections);
     return GST_PAD_PROBE_OK;
 }
