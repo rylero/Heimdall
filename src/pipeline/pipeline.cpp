@@ -101,7 +101,9 @@ void DeepStreamPipeline::build() {
         if (!gst_element_link(q2, enc) || !gst_element_link(enc, appsink))
             throw std::runtime_error("Failed to link preview branch");
 
-        g_signal_connect(appsink, "new-sample", G_CALLBACK(appsink_cb), &on_frame_);
+        GstAppSinkCallbacks sink_cbs{};
+        sink_cbs.new_sample = appsink_cb;
+        gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &sink_cbs, &on_frame_, nullptr);
     } else {
         if (!gst_element_link(infer, sink))
             throw std::runtime_error("Failed to link infer to sink");
@@ -118,8 +120,8 @@ void DeepStreamPipeline::build() {
     gst_object_unref(bus);
 }
 
-GstFlowReturn DeepStreamPipeline::appsink_cb(GstElement* appsink, gpointer user_data) {
-    GstSample* sample = gst_app_sink_pull_sample(GST_APP_SINK(appsink));
+GstFlowReturn DeepStreamPipeline::appsink_cb(GstAppSink* appsink, gpointer user_data) {
+    GstSample* sample = gst_app_sink_pull_sample(appsink);
     if (!sample) return GST_FLOW_OK;
     GstBuffer* buf = gst_sample_get_buffer(sample);
     GstMapInfo map;

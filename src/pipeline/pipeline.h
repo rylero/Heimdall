@@ -3,6 +3,7 @@
 #include "probe.h"
 #include <functional>
 #include <gst/gst.h>
+#include <gst/app/gstappsink.h>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,6 @@ private:
     GstElement*               pipeline_ = nullptr;
     GMainLoop*                loop_     = nullptr;
 
-    static gboolean    bus_cb(GstBus*, GstMessage*, gpointer);
-    static GstFlowReturn appsink_cb(GstElement*, gpointer);
+    static gboolean      bus_cb(GstBus*, GstMessage*, gpointer);
+    static GstFlowReturn appsink_cb(GstAppSink*, gpointer);
 };
