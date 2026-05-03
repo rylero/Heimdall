@@ -122,10 +122,11 @@ void DeepStreamPipeline::build() {
 
 GstFlowReturn DeepStreamPipeline::appsink_cb(GstAppSink* appsink, gpointer user_data) {
     GstSample* sample = gst_app_sink_pull_sample(appsink);
-    if (!sample) return GST_FLOW_OK;
+    if (!sample) { g_print("appsink: null sample\n"); return GST_FLOW_OK; }
     GstBuffer* buf = gst_sample_get_buffer(sample);
     GstMapInfo map;
     if (gst_buffer_map(buf, &map, GST_MAP_READ)) {
+        g_print("appsink: frame %zu bytes\n", map.size);
         auto* cb = static_cast<FrameCallback*>(user_data);
         (*cb)(map.data, map.size);
         gst_buffer_unmap(buf, &map);
