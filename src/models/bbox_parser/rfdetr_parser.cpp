@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-static constexpr const char* LOGITS_LAYER = "pred_logits";
-static constexpr const char* BOXES_LAYER  = "pred_boxes";
+static constexpr const char* LOGITS_LAYER = "labels";
+static constexpr const char* BOXES_LAYER  = "dets";
 
 extern "C" bool NvDsInferParseCustomRFDetr(
     std::vector<NvDsInferLayerInfo> const& outputLayersInfo,

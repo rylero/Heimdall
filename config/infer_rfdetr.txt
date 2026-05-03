@@ -1,24 +1,16 @@
-# Heimdall nvinfer config for RFDetr INT8 TensorRT engine.
-# Replace all-caps placeholders before use:
-#   ENGINE_PATH    — absolute path to .engine file (e.g. /app/models/rfdetr.engine)
-#   LABELS_PATH    — absolute path to labels.txt (one class name per line)
-#   NUM_CLASSES    — number of lines in labels.txt
-#   PARSER_SO_PATH — absolute path to librfdetr_parser.so
-#                    (e.g. /app/build/src/models/bbox_parser/librfdetr_parser.so)
-
 [property]
 gpu-id=0
 net-scale-factor=0.0039215697906911373
-model-engine-file=ENGINE_PATH
-labelfile-path=LABELS_PATH
-batch-size=2
-network-mode=1
-num-detected-classes=NUM_CLASSES
+model-engine-file=/app/models/inference_model.engine
+labelfile-path=/app/models/labels.txt
+batch-size=1
+network-mode=2
+num-detected-classes=91
 interval=0
 gie-unique-id=1
 network-type=0
 parse-bbox-func-name=NvDsInferParseCustomRFDetr
-custom-lib-path=PARSER_SO_PATH
+custom-lib-path=/app/build/src/models/bbox_parser/librfdetr_parser.so
 
 [class-attrs-all]
 threshold=0.3
