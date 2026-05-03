@@ -68,8 +68,10 @@ void DeepStreamPipeline::build() {
     GstElement* enc     = gst_element_factory_make("nvv4l2h264enc",  "rtsp_enc");
     GstElement* pay     = gst_element_factory_make("rtph264pay",     "rtsp_pay");
     GstElement* udpsink = gst_element_factory_make("udpsink",        "rtsp_udp");
-    if (!conv || !enc || !pay || !udpsink)
-        throw std::runtime_error("Failed to create RTSP pipeline elements");
+    if (!conv)    throw std::runtime_error("Failed to create nvvideoconvert");
+    if (!enc)     throw std::runtime_error("Failed to create nvv4l2h264enc");
+    if (!pay)     throw std::runtime_error("Failed to create rtph264pay");
+    if (!udpsink) throw std::runtime_error("Failed to create udpsink");
 
     g_object_set(enc,     "bitrate", 4000000, nullptr);
     g_object_set(pay,     "config-interval", 1, "pt", 96, nullptr);
