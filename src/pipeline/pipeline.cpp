@@ -1,14 +1,17 @@
 #include "pipeline.h"
+#include <gst/app/gstappsink.h>
 #include <stdexcept>
 #include <string>
 
 DeepStreamPipeline::DeepStreamPipeline(
     std::vector<CameraConfig> cameras,
     std::string               infer_config_path,
-    DetectionCallback         on_detection
+    DetectionCallback         on_detection,
+    FrameCallback             on_frame
 ) : cameras_(std::move(cameras)),
     infer_config_path_(std::move(infer_config_path)),
-    on_detection_(std::move(on_detection)) {}
+    on_detection_(std::move(on_detection)),
+    on_frame_(std::move(on_frame)) {}
 
 DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
 
@@ -21,8 +24,8 @@ void DeepStreamPipeline::build() {
     GstElement* mux = gst_element_factory_make("nvstreammux", "mux");
     if (!mux) throw std::runtime_error("Failed to create nvstreammux — DeepStream plugins not loaded?");
     g_object_set(mux,
-        "width",                640,
-        "height",               480,
+        "width",                static_cast<gint>(cameras_[0].width),
+        "height",               static_cast<gint>(cameras_[0].height),
         "batch-size",           static_cast<gint>(cameras_.size()),
         "batched-push-timeout", 4000000,
         "live-source",          TRUE,
@@ -62,8 +65,53 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-    if (!gst_element_link(infer, sink))
-        throw std::runtime_error("Failed to link infer to sink");
+
+    if (on_frame_) {
+        // Preview branch: infer → tee → [fakesink | nvvideoconvert → jpegenc → appsink]
+        GstElement* tee     = gst_element_factory_make("tee",           "preview_tee");
+        GstElement* q1      = gst_element_factory_make("queue",         "q_infer");
+        GstElement* q2      = gst_element_factory_make("queue",         "q_preview");
+        GstElement* conv    = gst_element_factory_make("nvvideoconvert","preview_conv");
+        GstElement* enc     = gst_element_factory_make("jpegenc",       "preview_enc");
+        GstElement* appsink = gst_element_factory_make("appsink",       "preview_appsink");
+        if (!tee || !q1 || !q2 || !conv || !enc || !appsink)
+            throw std::runtime_error("Failed to create preview pipeline elements");
+
+        g_object_set(enc,     "quality", 60, nullptr);
+        g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE,
+                               "max-buffers", 1, "drop", TRUE, nullptr);
+
+        gst_bin_add_many(GST_BIN(pipeline_), tee, q1, q2, conv, enc, appsink, nullptr);
+
+        if (!gst_element_link(infer, tee))
+            throw std::runtime_error("Failed to link infer to tee");
+
+        // Branch 1: tee → q1 → fakesink
+        GstPad* tp1 = gst_element_get_request_pad(tee, "src_%u");
+        GstPad* qs1 = gst_element_get_static_pad(q1, "sink");
+        gst_pad_link(tp1, qs1);
+        gst_object_unref(tp1); gst_object_unref(qs1);
+        if (!gst_element_link(q1, sink))
+            throw std::runtime_error("Failed to link q1 to fakesink");
+
+        // Branch 2: tee → q2 → nvvideoconvert → jpegenc → appsink
+        GstPad* tp2 = gst_element_get_request_pad(tee, "src_%u");
+        GstPad* qs2 = gst_element_get_static_pad(q2, "sink");
+        gst_pad_link(tp2, qs2);
+        gst_object_unref(tp2); gst_object_unref(qs2);
+
+        GstCaps* i420 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "I420", nullptr);
+        if (!gst_element_link(q2, conv) ||
+            !gst_element_link_filtered(conv, enc, i420) ||
+            !gst_element_link(enc, appsink))
+            throw std::runtime_error("Failed to link preview branch");
+        gst_caps_unref(i420);
+
+        g_signal_connect(appsink, "new-sample", G_CALLBACK(appsink_cb), &on_frame_);
+    } else {
+        if (!gst_element_link(infer, sink))
+            throw std::runtime_error("Failed to link infer to sink");
+    }
 
     // Install pad probe on nvinfer src pad to extract detections each frame
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
@@ -74,6 +122,20 @@ void DeepStreamPipeline::build() {
     GstBus* bus = gst_element_get_bus(pipeline_);
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
+}
+
+GstFlowReturn DeepStreamPipeline::appsink_cb(GstElement* appsink, gpointer user_data) {
+    GstSample* sample = gst_app_sink_pull_sample(GST_APP_SINK(appsink));
+    if (!sample) return GST_FLOW_OK;
+    GstBuffer* buf = gst_sample_get_buffer(sample);
+    GstMapInfo map;
+    if (gst_buffer_map(buf, &map, GST_MAP_READ)) {
+        auto* cb = static_cast<FrameCallback*>(user_data);
+        (*cb)(map.data, map.size);
+        gst_buffer_unmap(buf, &map);
+    }
+    gst_sample_unref(sample);
+    return GST_FLOW_OK;
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {

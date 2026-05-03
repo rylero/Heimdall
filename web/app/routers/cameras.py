@@ -1,9 +1,11 @@
-import cv2
+import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from ..database import get_db
 from ..models import CameraConfig
+
+_FRAME_ADDR = os.getenv("FRAME_ADDR", "tcp://localhost:5558")
 
 router = APIRouter()
 
@@ -61,46 +63,30 @@ def delete_camera(camera_id: int):
         db.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
 
 
-def _mjpeg_frames(device: str):
-    src = int(device) if str(device).isdigit() else device
-    cap = cv2.VideoCapture(src)
-    if not cap.isOpened():
-        return
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+def _zmq_mjpeg_frames():
+    import zmq
+    ctx = zmq.Context.instance()
+    sock = ctx.socket(zmq.SUB)
+    sock.connect(_FRAME_ADDR)
+    sock.setsockopt(zmq.SUBSCRIBE, b"")
+    sock.setsockopt(zmq.RCVTIMEO, 2000)
     try:
         while True:
-            ret, frame = cap.read()
-            if not ret:
+            try:
+                jpeg = sock.recv()
+            except zmq.Again:
                 break
-            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                   + buf.tobytes() + b"\r\n")
+            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
     finally:
-        cap.release()
+        sock.close()
 
 
 @router.get("/{camera_id}/stream")
 def stream_camera(camera_id: int):
     with get_db() as db:
-        row = db.execute(
-            "SELECT device FROM cameras WHERE id = ?", (camera_id,)
-        ).fetchone()
-    if not row:
-        raise HTTPException(404, "Camera not found")
-
-    device = row["device"]
-    # Pass the device directly to the generator — it handles unavailability by yielding nothing.
-    # Checking isOpened() here first to give a clean 503 before streaming starts.
-    src = int(device) if str(device).isdigit() else device
-    cap = cv2.VideoCapture(src)
-    opened = cap.isOpened()
-    cap.release()  # Release probe; generator opens its own handle
-
-    if not opened:
-        raise HTTPException(503, "Camera device unavailable (may be in use by pipeline)")
-
+        if not db.execute("SELECT 1 FROM cameras WHERE id = ?", (camera_id,)).fetchone():
+            raise HTTPException(404, "Camera not found")
     return StreamingResponse(
-        _mjpeg_frames(device),
+        _zmq_mjpeg_frames(),
         media_type="multipart/x-mixed-replace; boundary=frame",
     )

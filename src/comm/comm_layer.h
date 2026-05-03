@@ -13,6 +13,7 @@ public:
         std::string pose_bind_addr;        // Jetson PULL — receives robot pose
         std::string output_bind_addr;      // Jetson PUSH — sends track events
         std::string raw_output_bind_addr;  // Jetson PUB  — raw pixel detections (empty = disabled)
+        std::string frame_bind_addr;       // Jetson PUB  — JPEG frames for web preview (empty = disabled)
     };
 
     explicit CommLayer(Config config);
@@ -28,6 +29,8 @@ public:
     void publish_raw(const std::vector<Detection>& detections,
                      uint64_t timestamp_ns);
 
+    void publish_frame(const uint8_t* jpeg_data, size_t size);
+
     zmq::context_t& context() { return ctx_; }
 
 private:
@@ -35,5 +38,7 @@ private:
     zmq::socket_t  pull_sock_;
     zmq::socket_t  push_sock_;
     zmq::socket_t  raw_pub_sock_;
-    bool           raw_enabled_ = false;
+    zmq::socket_t  frame_pub_sock_;
+    bool           raw_enabled_   = false;
+    bool           frame_enabled_ = false;
 };

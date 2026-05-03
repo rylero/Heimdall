@@ -7,7 +7,8 @@ HeimdallApp::HeimdallApp(Config config)
       tracker_(config_.tracker),
       comm_(config_.comm),
       pipeline_(config_.pipeline_cameras, config_.infer_config_path,
-                [this](const std::vector<Detection>& d){ on_detections(d); })
+                [this](const std::vector<Detection>& d){ on_detections(d); },
+                [this](const uint8_t* data, size_t size){ comm_.publish_frame(data, size); })
 {}
 
 HeimdallApp::~HeimdallApp() { stop(); }

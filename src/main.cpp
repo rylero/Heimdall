@@ -13,7 +13,7 @@ static void shutdown(int) {
 int main() {
     // Pipeline cameras: device path + resolution (for GStreamer source elements)
     std::vector<CameraConfig> pipeline_cameras = {
-        {0, CameraType::USB, "/dev/video0", 640, 480, 60},
+        {0, CameraType::USB, "/dev/video0", 640, 480, 120},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
@@ -41,6 +41,7 @@ int main() {
             .pose_bind_addr       = "tcp://*:5555",
             .output_bind_addr     = "tcp://*:5556",
             .raw_output_bind_addr = "tcp://*:5557",
+            .frame_bind_addr      = "tcp://*:5558",
         },
     };
 
