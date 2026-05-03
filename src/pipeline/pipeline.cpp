@@ -81,17 +81,18 @@ void DeepStreamPipeline::build() {
                           "sync", FALSE, nullptr);
     gst_bin_add_many(GST_BIN(pipeline_), conv, vcvt, enc, pay, udpsink, nullptr);
 
-    // Force nvvideoconvert to output system-memory NV12 so videoconvert can process it
-    GstCaps* nv12 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
-
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux to infer");
-    if (!gst_element_link_many(infer, osd, nullptr))
-        throw std::runtime_error("Failed to link infer to osd");
-    if (!gst_element_link_filtered(osd, conv, nv12))  // osd NVMM → nvvideoconvert system NV12
-        throw std::runtime_error("Failed to link osd to nvvideoconvert");
+    if (!gst_element_link_many(infer, osd, conv, nullptr))
+        throw std::runtime_error("Failed to link infer→osd→nvvideoconvert");
+
+    // Force nvvideoconvert output to system-memory NV12 so videoconvert can handle it
+    GstCaps* nv12 = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
+    if (!gst_element_link_filtered(conv, vcvt, nv12))
+        throw std::runtime_error("Failed to link nvvideoconvert to videoconvert");
     gst_caps_unref(nv12);
-    if (!gst_element_link_many(conv, vcvt, enc, pay, udpsink, nullptr))
+
+    if (!gst_element_link_many(vcvt, enc, pay, udpsink, nullptr))
         throw std::runtime_error("Failed to link encoding chain");
 
     // Probe on infer src to extract detections (before osd renders boxes)
