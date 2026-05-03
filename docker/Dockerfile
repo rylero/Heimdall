@@ -17,6 +17,7 @@ WORKDIR /app
 COPY CMakeLists.txt .
 COPY src/models/bbox_parser/CMakeLists.txt src/models/bbox_parser/CMakeLists.txt
 COPY proto/ proto/
+COPY tests/CMakeLists.txt tests/CMakeLists.txt
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache
