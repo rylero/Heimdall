@@ -14,7 +14,7 @@ services:
       - ../config:/app/config
       - heimdall-data:/app/data
       - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/local/lib/gstreamer-1.0-host:ro
-      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
+      - /usr/lib/aarch64-linux-gnu/libx264.so.163:/usr/lib/aarch64-linux-gnu/libx264.so.163:ro
     network_mode: host
 
   heimdall-web:
