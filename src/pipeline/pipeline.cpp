@@ -108,7 +108,8 @@ void DeepStreamPipeline::build() {
     gst_rtsp_media_factory_set_launch(factory,
         "( udpsrc port=5400 "
         "caps=\"application/x-rtp,media=video,clock-rate=90000,"
-        "encoding-name=H264,payload=96\" name=pay0 )");
+        "encoding-name=H264,payload=96\" "
+        "! rtph264depay ! rtph264pay name=pay0 pt=96 )");
     gst_rtsp_media_factory_set_shared(factory, TRUE);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
