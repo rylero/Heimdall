@@ -32,18 +32,6 @@ void DeepStreamPipeline::build() {
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), mux);
 
-    // RTSP output elements (system-memory path — split before NVMM conversion)
-    GstElement* rtsp_vcvt   = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-    GstElement* rtsp_enc    = gst_element_factory_make("x264enc",      "rtsp_enc");
-    GstElement* rtsp_pay    = gst_element_factory_make("rtph264pay",   "rtsp_pay");
-    GstElement* rtsp_sink   = gst_element_factory_make("udpsink",      "rtsp_udp");
-    if (!rtsp_vcvt || !rtsp_enc || !rtsp_pay || !rtsp_sink)
-        throw std::runtime_error("Failed to create RTSP elements");
-    g_object_set(rtsp_enc,  "bitrate", 4000, "tune", 4, nullptr);
-    g_object_set(rtsp_pay,  "config-interval", 1, "pt", 96, nullptr);
-    g_object_set(rtsp_sink, "host", "127.0.0.1", "port", RTSP_UDP_PORT, "sync", FALSE, nullptr);
-    gst_bin_add_many(GST_BIN(pipeline_), rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr);
-
     for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
         GError* err = nullptr;
         GstElement* src = gst_parse_bin_from_description(
@@ -92,22 +80,18 @@ void DeepStreamPipeline::build() {
         GstPad* qr = gst_element_get_static_pad(q_rtsp, "sink");
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
         if (i == 0) {
-            // DIAGNOSTIC: bypass encoding — does q_rtsp flow continuously with fakesink?
-            GstElement* dbg_sink = gst_element_factory_make("fakesink", "rtsp_dbg_sink");
-            g_object_set(dbg_sink, "sync", FALSE, nullptr);
-            gst_bin_add(GST_BIN(pipeline_), dbg_sink);
-            if (!gst_element_link(q_rtsp, dbg_sink))
-                throw std::runtime_error("Failed to link RTSP diagnostic branch");
-
-            // Debug probes — remove once RTSP is confirmed working
-            auto count_probe = [](GstPad*, GstPadProbeInfo*, gpointer label) -> GstPadProbeReturn {
-                static int n = 0;
-                if (++n % 90 == 1) g_print("RTSP probe [%s]: %d buffers\n", (const char*)label, n);
-                return GST_PAD_PROBE_OK;
-            };
-            GstPad* pq = gst_element_get_static_pad(q_rtsp,   "src"); gst_pad_add_probe(pq, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"q_rtsp",   nullptr); gst_object_unref(pq);
-            GstPad* pe = gst_element_get_static_pad(rtsp_enc,  "src"); gst_pad_add_probe(pe, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"x264enc",  nullptr); gst_object_unref(pe);
-            GstPad* pp = gst_element_get_static_pad(rtsp_pay,  "src"); gst_pad_add_probe(pp, GST_PAD_PROBE_TYPE_BUFFER, count_probe, (gpointer)"rtph264pay",nullptr); gst_object_unref(pp);
+            GstElement* rtsp_vcvt = gst_element_factory_make("videoconvert", "rtsp_vcvt");
+            GstElement* rtsp_enc  = gst_element_factory_make("x264enc",      "rtsp_enc");
+            GstElement* rtsp_pay  = gst_element_factory_make("rtph264pay",   "rtsp_pay");
+            GstElement* rtsp_sink = gst_element_factory_make("udpsink",      "rtsp_udp");
+            if (!rtsp_vcvt || !rtsp_enc || !rtsp_pay || !rtsp_sink)
+                throw std::runtime_error("Failed to create RTSP elements");
+            g_object_set(rtsp_enc,  "bitrate", 4000, "tune", 4, nullptr);
+            g_object_set(rtsp_pay,  "config-interval", 1, "pt", 96, nullptr);
+            g_object_set(rtsp_sink, "host", "127.0.0.1", "port", RTSP_UDP_PORT, "sync", FALSE, nullptr);
+            gst_bin_add_many(GST_BIN(pipeline_), rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr);
+            if (!gst_element_link_many(q_rtsp, rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr))
+                throw std::runtime_error("Failed to link RTSP branch");
         } else {
             GstElement* rtsp_drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
             gst_bin_add(GST_BIN(pipeline_), rtsp_drop);
