@@ -84,29 +84,41 @@ void DeepStreamPipeline::build() {
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
         if (i == 0) {
-            GstElement* vcvt   = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-            GstElement* cfilt  = gst_element_factory_make("capsfilter",   "rtsp_cfilt");
-            GstElement* asink  = gst_element_factory_make("appsink",      "rtsp_appsink");
-            if (!vcvt || !cfilt || !asink)
+            GstElement* vcvt  = gst_element_factory_make("videoconvert", "rtsp_vcvt");
+            GstElement* asink = gst_element_factory_make("appsink",      "rtsp_appsink");
+            if (!vcvt || !asink)
                 throw std::runtime_error("Failed to create RTSP appsink elements");
 
-            GstCaps* i420 = gst_caps_from_string("video/x-raw,format=I420");
-            g_object_set(cfilt, "caps", i420, nullptr);
-            gst_caps_unref(i420);
+            // Probe on q_rtsp src to confirm the branch is flowing at all.
+            {
+                GstPad* p = gst_element_get_static_pad(q_rtsp, "src");
+                gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER,
+                    +[](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                        static int n = 0;
+                        if (++n <= 3 || n % 300 == 0)
+                            g_print("[RTSP] q_rtsp buf #%d\n", n);
+                        return GST_PAD_PROBE_OK;
+                    }, nullptr, nullptr);
+                gst_object_unref(p);
+            }
 
-            g_object_set(asink,
-                "emit-signals", TRUE,
-                "sync",         FALSE,
-                "max-buffers",  2,
-                "drop",         TRUE,
-                nullptr);
+            g_object_set(asink, "sync", FALSE, "max-buffers", 2, "drop", TRUE, nullptr);
 
-            gst_bin_add_many(GST_BIN(pipeline_), vcvt, cfilt, asink, nullptr);
-            if (!gst_element_link_many(q_rtsp, vcvt, cfilt, asink, nullptr))
+            gst_bin_add_many(GST_BIN(pipeline_), vcvt, asink, nullptr);
+            if (!gst_element_link_many(q_rtsp, vcvt, asink, nullptr))
                 throw std::runtime_error("Failed to link RTSP appsink branch");
 
+            // Use callbacks rather than emit-signals to avoid the g_signal_connect
+            // path which is unreliable for appsink in some GStreamer versions.
+            static GstAppSinkCallbacks cbs = {
+                nullptr,   // eos
+                nullptr,   // new_preroll
+                [](GstAppSink* s, gpointer d) -> GstFlowReturn {
+                    return DeepStreamPipeline::on_new_sample(s, d);
+                }
+            };
+            gst_app_sink_set_callbacks(asink, &cbs, this, nullptr);
             rtsp_appsink_ = asink;
-            g_signal_connect(asink, "new-sample", G_CALLBACK(on_new_sample), this);
         } else {
             GstElement* drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
             gst_bin_add(GST_BIN(pipeline_), drop);
