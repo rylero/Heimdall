@@ -1,6 +1,30 @@
 #include "pipeline.h"
 #include <stdexcept>
 #include <string>
+#include <atomic>
+
+static std::atomic<int> s_rtsp_queue_bufs{0};
+static std::atomic<int> s_rtsp_enc_bufs{0};
+static std::atomic<int> s_rtsp_udp_bufs{0};
+
+static GstPadProbeReturn rtsp_queue_probe(GstPad*, GstPadProbeInfo*, gpointer) {
+    int n = ++s_rtsp_queue_bufs;
+    if (n == 1 || n % 150 == 0)
+        g_print("[RTSP] q_rtsp out: %d buffers\n", n);
+    return GST_PAD_PROBE_OK;
+}
+static GstPadProbeReturn rtsp_enc_probe(GstPad*, GstPadProbeInfo*, gpointer) {
+    int n = ++s_rtsp_enc_bufs;
+    if (n == 1 || n % 150 == 0)
+        g_print("[RTSP] x264enc out: %d buffers\n", n);
+    return GST_PAD_PROBE_OK;
+}
+static GstPadProbeReturn rtsp_udp_probe(GstPad*, GstPadProbeInfo*, gpointer) {
+    int n = ++s_rtsp_udp_bufs;
+    if (n == 1 || n % 150 == 0)
+        g_print("[RTSP] udpsink in: %d buffers\n", n);
+    return GST_PAD_PROBE_OK;
+}
 
 static constexpr int RTSP_UDP_PORT  = 5400;
 static constexpr int RTSP_SERV_PORT = 8554;
@@ -92,6 +116,14 @@ void DeepStreamPipeline::build() {
             gst_bin_add_many(GST_BIN(pipeline_), rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr);
             if (!gst_element_link_many(q_rtsp, rtsp_vcvt, rtsp_enc, rtsp_pay, rtsp_sink, nullptr))
                 throw std::runtime_error("Failed to link RTSP branch");
+
+            GstPad* qr_src  = gst_element_get_static_pad(q_rtsp,   "src");
+            GstPad* enc_src = gst_element_get_static_pad(rtsp_enc,  "src");
+            GstPad* udp_snk = gst_element_get_static_pad(rtsp_sink, "sink");
+            gst_pad_add_probe(qr_src,  GST_PAD_PROBE_TYPE_BUFFER, rtsp_queue_probe, nullptr, nullptr);
+            gst_pad_add_probe(enc_src, GST_PAD_PROBE_TYPE_BUFFER, rtsp_enc_probe,   nullptr, nullptr);
+            gst_pad_add_probe(udp_snk, GST_PAD_PROBE_TYPE_BUFFER, rtsp_udp_probe,   nullptr, nullptr);
+            gst_object_unref(qr_src); gst_object_unref(enc_src); gst_object_unref(udp_snk);
         } else {
             GstElement* rtsp_drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
             gst_bin_add(GST_BIN(pipeline_), rtsp_drop);
@@ -138,6 +170,7 @@ void DeepStreamPipeline::build() {
     gst_rtsp_server_attach(rtsp_server_, nullptr);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
+    std::printf("[RTSP] factory launch: %s\n", gst_rtsp_media_factory_get_launch(factory));
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
