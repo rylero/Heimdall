@@ -142,37 +142,48 @@ void DeepStreamPipeline::build() {
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
 
-// Called when the RTSP factory creates the shared media pipeline.
-// We set the pipeline to PLAYING so udpsrc starts listening on port 5400
-// and the main pipeline's udpsink packets reach it.  Once the first packet
-// arrives, udpsrc sets caps on its src pad → notify::caps → check_prepared()
-// sets status=PREPARED.  We also call set_status(PREPARED) directly after
-// a brief wait as a fallback in case the automatic chain doesn't fire.
+// Deferred callback: fires ~250 ms after on_media_configure, by which time
+// prepare() has placed the factory GstBin inside a GstPipeline and set it to
+// PLAYING.  We push a CAPS sticky event onto pay0's (udpsrc's) src pad.
+// gst_pad_store_sticky_event calls g_object_notify(pad, "caps") which fires
+// notify::caps → stream_caps_changed → check_prerolled → PREPARED, unblocking
+// prepare()'s wait_preroll().  We do this instead of calling
+// gst_rtsp_media_set_status() which is internal-only in this version.
+static gboolean
+force_pay0_caps(gpointer user_data)
+{
+    GstRTSPMedia* media = GST_RTSP_MEDIA(user_data);
+
+    GstElement* bin    = gst_rtsp_media_get_element(media);
+    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
+    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
+
+    if (srcpad) {
+        GstCaps* caps = gst_caps_from_string(
+            "application/x-rtp, media=(string)video, clock-rate=(int)90000, "
+            "encoding-name=(string)H264, payload=(int)96");
+        gst_pad_push_event(srcpad, gst_event_new_caps(caps));
+        gst_caps_unref(caps);
+        gst_object_unref(srcpad);
+        std::printf("[RTSP] caps forced on pay0 → notify::caps chain should fire\n");
+    }
+    if (pay)    gst_object_unref(pay);
+    gst_object_unref(bin);
+    gst_object_unref(media);
+    return G_SOURCE_REMOVE;
+}
+
 void DeepStreamPipeline::on_media_configure(
     GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer)
 {
     gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
 
-    GstElement* bin = gst_rtsp_media_get_element(media);
-    gst_element_set_state(bin, GST_STATE_PLAYING);
-
-    // Give udpsrc up to 500 ms to receive the first UDP packet from udpsink.
-    // Once a packet arrives, caps are set on the src pad and check_prepared()
-    // in gst-rtsp-media will fire automatically.  The explicit set_status call
-    // below is the safety net if check_prepared hasn't triggered yet.
-    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
-    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
-    for (int i = 0; i < 50 && srcpad; ++i) {
-        GstCaps* c = gst_pad_get_current_caps(srcpad);
-        if (c) { gst_caps_unref(c); break; }
-        g_usleep(10 * 1000);
-    }
-    if (srcpad) gst_object_unref(srcpad);
-    if (pay)    gst_object_unref(pay);
-    gst_object_unref(bin);
-
-    gst_rtsp_media_set_status(media, GST_RTSP_MEDIA_STATUS_PREPARED);
-    std::printf("[RTSP] media set PREPARED\n");
+    // We can't push caps now: the factory GstBin hasn't been added to
+    // gst-rtsp-media's GstPipeline yet.  sync_state_with_parent will reset
+    // it to NULL, clearing any sticky events we set.  Schedule the caps push
+    // for after prepare() has wired everything up.
+    g_timeout_add(250, force_pay0_caps, gst_object_ref(media));
+    std::printf("[RTSP] factory configured\n");
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
