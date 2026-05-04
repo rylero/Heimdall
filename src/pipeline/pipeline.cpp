@@ -164,8 +164,10 @@ void DeepStreamPipeline::build() {
 }
 
 // Called once when gst-rtsp-server creates the shared media pipeline.
-// Finds the appsrc element and wires it to receive frames from the main
-// pipeline's appsink via on_new_sample.
+// Wires the factory's appsrc to the main pipeline's appsink, then pre-starts
+// the factory pipeline and pushes a single black frame so that x264enc and
+// rtph264pay fully negotiate their caps before gst_rtsp_media_prepare() calls
+// collect_streams() and tries to build the SDP.
 void DeepStreamPipeline::on_media_configure(
     GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data)
 {
@@ -173,19 +175,55 @@ void DeepStreamPipeline::on_media_configure(
 
     GstElement* bin    = gst_rtsp_media_get_element(media);
     GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
-    gst_object_unref(bin);
 
     if (!appsrc) {
         g_printerr("[RTSP] on_media_configure: appsrc 'rtsp_src' not found\n");
+        gst_object_unref(bin);
         return;
     }
 
     g_mutex_lock(&self->rtsp_appsrc_mutex_);
     if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
-    self->rtsp_appsrc_ = appsrc;  // owns the ref from gst_bin_get_by_name
+    self->rtsp_appsrc_ = appsrc;  // owns ref from gst_bin_get_by_name
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
-    std::printf("[RTSP] appsrc wired — factory ready\n");
+    // Start the factory pipeline so the streaming thread is running.
+    gst_element_set_state(bin, GST_STATE_PLAYING);
+
+    // Push one black I420 frame to force caps negotiation through
+    // x264enc → rtph264pay.  rtph264pay stores the resulting CAPS event
+    // as a sticky event on its (currently unlinked) src pad, making
+    // gst_pad_get_current_caps() return non-NULL so prepare() can build
+    // the SDP without waiting for a real camera frame.
+    const gint w = static_cast<gint>(self->cameras_[0].width);
+    const gint h = static_cast<gint>(self->cameras_[0].height);
+    const gsize sz = static_cast<gsize>(w * h * 3 / 2);
+    GstBuffer* buf = gst_buffer_new_allocate(nullptr, sz, nullptr);
+    gst_buffer_memset(buf, 0, 0, sz);
+    GstCaps* vcaps = gst_caps_new_simple("video/x-raw",
+        "format", G_TYPE_STRING, "I420",
+        "width",  G_TYPE_INT,    w,
+        "height", G_TYPE_INT,    h,
+        nullptr);
+    GstSample* sample = gst_sample_new(buf, vcaps, nullptr, nullptr);
+    gst_buffer_unref(buf);
+    gst_caps_unref(vcaps);
+    gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
+    gst_sample_unref(sample);
+
+    // Poll until rtph264pay's src pad has current caps (max 1 s).
+    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
+    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
+    for (int i = 0; i < 100 && srcpad; ++i) {
+        GstCaps* c = gst_pad_get_current_caps(srcpad);
+        if (c) { gst_caps_unref(c); break; }
+        g_usleep(10 * 1000);  // 10 ms
+    }
+    if (srcpad) gst_object_unref(srcpad);
+    if (pay)    gst_object_unref(pay);
+
+    gst_object_unref(bin);
+    std::printf("[RTSP] appsrc wired and caps pre-negotiated\n");
 }
 
 // Called from the main pipeline's streaming thread each time a raw frame
