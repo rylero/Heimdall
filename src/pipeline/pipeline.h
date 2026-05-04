@@ -2,6 +2,7 @@
 #include "camera_source.h"
 #include "probe.h"
 #include <gst/gst.h>
+#include <gst/app/gstappsrc.h>
 #include <gst/rtsp-server/rtsp-server.h>
 #include <string>
 #include <vector>
@@ -18,6 +19,10 @@ public:
     void build();
     void run();
     void stop();
+
+    // Set by on_media_configure; read by the q_rtsp pad probe.
+    GstElement* rtsp_appsrc_ = nullptr;
+    GMutex      rtsp_appsrc_mutex_{};
 
 private:
     std::vector<CameraConfig> cameras_;

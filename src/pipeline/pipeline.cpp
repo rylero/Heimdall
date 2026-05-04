@@ -2,7 +2,6 @@
 #include <stdexcept>
 #include <string>
 
-static constexpr int RTSP_UDP_PORT  = 5400;
 static constexpr int RTSP_SERV_PORT = 8555;
 
 DeepStreamPipeline::DeepStreamPipeline(
@@ -11,9 +10,15 @@ DeepStreamPipeline::DeepStreamPipeline(
     DetectionCallback         on_detection
 ) : cameras_(std::move(cameras)),
     infer_config_path_(std::move(infer_config_path)),
-    on_detection_(std::move(on_detection)) {}
+    on_detection_(std::move(on_detection))
+{
+    g_mutex_init(&rtsp_appsrc_mutex_);
+}
 
-DeepStreamPipeline::~DeepStreamPipeline() { stop(); }
+DeepStreamPipeline::~DeepStreamPipeline() {
+    stop();
+    g_mutex_clear(&rtsp_appsrc_mutex_);
+}
 
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
@@ -76,19 +81,41 @@ void DeepStreamPipeline::build() {
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
         if (i == 0) {
-            GstElement* vcvt = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-            GstElement* enc  = gst_element_factory_make("x264enc",      "rtsp_enc");
-            GstElement* pay  = gst_element_factory_make("rtph264pay",   "rtsp_pay");
-            GstElement* sink = gst_element_factory_make("udpsink",      "rtsp_udp");
-            if (!vcvt || !enc || !pay || !sink)
-                throw std::runtime_error("Failed to create RTSP encoding elements");
-            g_object_set(enc,  "tune", 4, "bitrate", 4000, nullptr);
-            g_object_set(pay,  "config-interval", 1, "pt", 96, nullptr);
-            g_object_set(sink, "host", "127.0.0.1", "port", RTSP_UDP_PORT,
-                               "sync", FALSE, nullptr);
-            gst_bin_add_many(GST_BIN(pipeline_), vcvt, enc, pay, sink, nullptr);
-            if (!gst_element_link_many(q_rtsp, vcvt, enc, pay, sink, nullptr))
-                throw std::runtime_error("Failed to link RTSP encoding branch");
+            // RTSP branch: q_rtsp → fakesink (keeps pipeline flowing).
+            // A pad probe on q_rtsp's src intercepts each raw frame and
+            // pushes it directly into the RTSP factory's appsrc.
+            GstElement* fsink = gst_element_factory_make("fakesink", "rtsp_fsink");
+            if (!fsink) throw std::runtime_error("Failed to create RTSP fakesink");
+            g_object_set(fsink, "sync", FALSE, nullptr);
+            gst_bin_add(GST_BIN(pipeline_), fsink);
+            if (!gst_element_link(q_rtsp, fsink))
+                throw std::runtime_error("Failed to link q_rtsp to fakesink");
+
+            GstPad* qr_src = gst_element_get_static_pad(q_rtsp, "src");
+            gst_pad_add_probe(qr_src, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad* pad, GstPadProbeInfo* info, gpointer data) -> GstPadProbeReturn {
+                    auto* self = static_cast<DeepStreamPipeline*>(data);
+
+                    g_mutex_lock(&self->rtsp_appsrc_mutex_);
+                    GstElement* appsrc = self->rtsp_appsrc_
+                        ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
+                    g_mutex_unlock(&self->rtsp_appsrc_mutex_);
+
+                    if (appsrc) {
+                        GstBuffer* buf  = gst_buffer_ref(GST_PAD_PROBE_INFO_BUFFER(info));
+                        GstCaps*   caps = gst_pad_get_current_caps(pad);
+                        if (caps) {
+                            GstSample* s = gst_sample_new(buf, caps, nullptr, nullptr);
+                            gst_app_src_push_sample(GST_APP_SRC(appsrc), s);
+                            gst_sample_unref(s);
+                            gst_caps_unref(caps);
+                        }
+                        gst_buffer_unref(buf);
+                        gst_object_unref(appsrc);
+                    }
+                    return GST_PAD_PROBE_OK;
+                }, this, nullptr);
+            gst_object_unref(qr_src);
         } else {
             GstElement* drop = gst_element_factory_make("fakesink",
                 ("rtsp_drop_" + std::to_string(i)).c_str());
@@ -119,22 +146,28 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    // RTSP server — NVIDIA DeepStream pattern:
-    //   main pipeline encodes → RTP → udpsink:5400
-    //   RTSP factory:           udpsrc name=pay0 port=5400 (fixed caps → SDP immediately)
-    // udpsrc provides application/x-rtp caps immediately so gst-rtsp-server
-    // can generate the SDP without waiting for data to flow.
+    // RTSP server — mirrors the user's simple example:
+    //   videotestsrc is-live=1 ! x264enc ! rtph264pay name=pay0 pt=96
+    // but with appsrc instead of videotestsrc, fed by the q_rtsp pad probe.
+    // is-live=1 → NO_PREROLL → prepare() sets PLAYING immediately →
+    // first real frame arrives via probe → caps flow → check_prerolled → 200 OK.
+    const std::string w = std::to_string(cameras_[0].width);
+    const std::string h = std::to_string(cameras_[0].height);
+    const std::string factory_str =
+        "( appsrc name=rtsp_src is-live=1 do-timestamp=true "
+        "! videoconvert "
+        "! x264enc tune=4 speed-preset=1 "
+        "! rtph264pay name=pay0 pt=96 )";
+
     rtsp_server_ = gst_rtsp_server_new();
     gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
 
     GstRTSPMountPoints*  mounts  = gst_rtsp_server_get_mount_points(rtsp_server_);
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
-    gst_rtsp_media_factory_set_launch(factory,
-        "( udpsrc name=pay0 port=5400 buffer-size=524288 "
-        "caps=\"application/x-rtp, media=video, clock-rate=90000, "
-        "encoding-name=(string)H264, payload=96\" )");
+    gst_rtsp_media_factory_set_launch(factory, factory_str.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
-    g_signal_connect(factory, "media-configure", G_CALLBACK(on_media_configure), nullptr);
+    g_signal_connect(factory, "media-configure",
+        G_CALLBACK(on_media_configure), this);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
     gst_rtsp_server_attach(rtsp_server_, nullptr);
@@ -142,47 +175,26 @@ void DeepStreamPipeline::build() {
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
 
-// Deferred callback: fires ~250 ms after on_media_configure, by which time
-// prepare() has placed the factory GstBin inside a GstPipeline and set it to
-// PLAYING.  We push a CAPS sticky event onto pay0's (udpsrc's) src pad.
-// gst_pad_store_sticky_event calls g_object_notify(pad, "caps") which fires
-// notify::caps → stream_caps_changed → check_prerolled → PREPARED, unblocking
-// prepare()'s wait_preroll().  We do this instead of calling
-// gst_rtsp_media_set_status() which is internal-only in this version.
-static gboolean
-force_pay0_caps(gpointer user_data)
-{
-    GstRTSPMedia* media = GST_RTSP_MEDIA(user_data);
-
-    GstElement* bin    = gst_rtsp_media_get_element(media);
-    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
-    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
-
-    if (srcpad) {
-        GstCaps* caps = gst_caps_from_string(
-            "application/x-rtp, media=(string)video, clock-rate=(int)90000, "
-            "encoding-name=(string)H264, payload=(int)96");
-        gst_pad_push_event(srcpad, gst_event_new_caps(caps));
-        gst_caps_unref(caps);
-        gst_object_unref(srcpad);
-        std::printf("[RTSP] caps forced on pay0 → notify::caps chain should fire\n");
-    }
-    if (pay)    gst_object_unref(pay);
-    gst_object_unref(bin);
-    gst_object_unref(media);
-    return G_SOURCE_REMOVE;
-}
-
+// Store the factory's appsrc so the q_rtsp pad probe can push frames into it.
 void DeepStreamPipeline::on_media_configure(
-    GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer)
+    GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data)
 {
+    auto* self = static_cast<DeepStreamPipeline*>(data);
+
     gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
 
-    // We can't push caps now: the factory GstBin hasn't been added to
-    // gst-rtsp-media's GstPipeline yet.  sync_state_with_parent will reset
-    // it to NULL, clearing any sticky events we set.  Schedule the caps push
-    // for after prepare() has wired everything up.
-    g_timeout_add(250, force_pay0_caps, gst_object_ref(media));
+    GstElement* bin    = gst_rtsp_media_get_element(media);
+    GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
+    gst_object_unref(bin);
+
+    if (!appsrc) { g_printerr("[RTSP] appsrc not found\n"); return; }
+
+    g_mutex_lock(&self->rtsp_appsrc_mutex_);
+    if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
+    self->rtsp_appsrc_ = GST_ELEMENT(gst_object_ref(appsrc));
+    g_mutex_unlock(&self->rtsp_appsrc_mutex_);
+
+    gst_object_unref(appsrc);
     std::printf("[RTSP] factory configured\n");
 }
 
@@ -227,4 +239,7 @@ void DeepStreamPipeline::stop() {
         g_object_unref(rtsp_server_);
         rtsp_server_ = nullptr;
     }
+    g_mutex_lock(&rtsp_appsrc_mutex_);
+    if (rtsp_appsrc_) { gst_object_unref(rtsp_appsrc_); rtsp_appsrc_ = nullptr; }
+    g_mutex_unlock(&rtsp_appsrc_mutex_);
 }
