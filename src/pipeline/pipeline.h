@@ -27,5 +27,6 @@ private:
     GMainLoop*                loop_        = nullptr;
     GstRTSPServer*            rtsp_server_ = nullptr;
 
+    static void     on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia*, gpointer);
     static gboolean bus_cb(GstBus*, GstMessage*, gpointer);
 };

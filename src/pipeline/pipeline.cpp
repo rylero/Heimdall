@@ -134,11 +134,45 @@ void DeepStreamPipeline::build() {
         "caps=\"application/x-rtp, media=video, clock-rate=90000, "
         "encoding-name=(string)H264, payload=96\" )");
     gst_rtsp_media_factory_set_shared(factory, TRUE);
+    g_signal_connect(factory, "media-configure", G_CALLBACK(on_media_configure), nullptr);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
     gst_rtsp_server_attach(rtsp_server_, nullptr);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
+}
+
+// Called when the RTSP factory creates the shared media pipeline.
+// We set the pipeline to PLAYING so udpsrc starts listening on port 5400
+// and the main pipeline's udpsink packets reach it.  Once the first packet
+// arrives, udpsrc sets caps on its src pad → notify::caps → check_prepared()
+// sets status=PREPARED.  We also call set_status(PREPARED) directly after
+// a brief wait as a fallback in case the automatic chain doesn't fire.
+void DeepStreamPipeline::on_media_configure(
+    GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer)
+{
+    gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
+
+    GstElement* bin = gst_rtsp_media_get_element(media);
+    gst_element_set_state(bin, GST_STATE_PLAYING);
+
+    // Give udpsrc up to 500 ms to receive the first UDP packet from udpsink.
+    // Once a packet arrives, caps are set on the src pad and check_prepared()
+    // in gst-rtsp-media will fire automatically.  The explicit set_status call
+    // below is the safety net if check_prepared hasn't triggered yet.
+    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
+    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
+    for (int i = 0; i < 50 && srcpad; ++i) {
+        GstCaps* c = gst_pad_get_current_caps(srcpad);
+        if (c) { gst_caps_unref(c); break; }
+        g_usleep(10 * 1000);
+    }
+    if (srcpad) gst_object_unref(srcpad);
+    if (pay)    gst_object_unref(pay);
+    gst_object_unref(bin);
+
+    gst_rtsp_media_set_status(media, GST_RTSP_MEDIA_STATUS_PREPARED);
+    std::printf("[RTSP] media set PREPARED\n");
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
