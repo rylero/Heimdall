@@ -196,6 +196,13 @@ void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* 
         
         g_object_set(G_OBJECT(appsrc), "caps", caps, nullptr);
         gst_caps_unref(caps);
+        g_object_set(G_OBJECT(appsrc), 
+            "emit-signals", TRUE, 
+            "is-live", TRUE, 
+            "min-latency", 0,
+            "max-buffers", 2, // Don't let it backlog
+            "leaky-type", 2,  // Drop old buffers (upstream won't block)
+            nullptr);
 
         g_mutex_lock(&self->rtsp_appsrc_mutex_);
         if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
