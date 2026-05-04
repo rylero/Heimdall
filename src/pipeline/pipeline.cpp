@@ -142,24 +142,21 @@ void DeepStreamPipeline::build() {
     // can generate a valid SDP before any data flows.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
-    // Pipeline topology:
-    //   appsrc → x264enc → tee → rtph264pay name=pay0   (to RTSP client)
-    //                          → fakesink               (for preroll)
-    //
-    // is-live=false: prepare() waits for ASYNC_DONE so SDP is generated after
-    //   real caps are available.
-    // tee after x264enc: fakesink prerolls only after x264enc has encoded one
-    //   frame, so pay0's src-pad caps are set before ASYNC_DONE fires.
-    // pay0's src pad stays unlinked: gst-rtsp-server's ghost-pad creation
-    //   requires an unlinked target pad (assertion !gst_pad_is_linked).
-    // format=3 (GST_FORMAT_TIME) prevents the segment-format CRITICAL.
+    // is-live=true: prepare() gets NO_PREROLL immediately (no waiting for
+    // a sink to preroll).  After prepare() sets the pipeline to PLAYING,
+    // on_new_sample pushes real frames; x264enc encodes and rtph264pay
+    // stores the resulting CAPS event on its (unlinked) src pad.
+    // gst-rtsp-server's notify::caps handler then updates the stream caps
+    // so get_sdp() can generate the SDP.
+    // do-timestamp=true + min-latency=0: ensures appsrc doesn't add any
+    // delay before pushing the first buffer.
+    // speed-preset=ultrafast: minimises x264enc startup latency so caps
+    // are available as quickly as possible after PLAYING is set.
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=false format=3 "
+        "( appsrc name=rtsp_src is-live=true do-timestamp=true format=3 "
         "caps=\"video/x-raw,format=I420,width=" + w + ",height=" + h + "\" "
-        "! x264enc tune=4 bitrate=4000 "
-        "! tee name=t "
-        "! rtph264pay name=pay0 config-interval=1 pt=96 "
-        "  t. ! fakesink sync=false )";
+        "! x264enc tune=4 bitrate=4000 speed-preset=1 "
+        "! rtph264pay name=pay0 config-interval=1 pt=96 )";
 
     // Test with gst_parse_launch — exactly what gst-rtsp-server calls internally.
     {
@@ -195,16 +192,6 @@ void DeepStreamPipeline::build() {
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
 
-// Called when gst-rtsp-server constructs the factory pipeline.
-// We only need to wire the appsrc pointer and set suspend mode here.
-// prepare() handles the rest:
-//   1. Wraps the factory GstBin in its own GstPipeline and sets to PAUSED.
-//   2. appsrc (is-live=false) blocks waiting for a frame.
-//   3. on_new_sample (main pipeline thread) pushes a real camera frame.
-//   4. appsrc → x264enc → tee → rtph264pay (caps set on pay0 src pad)
-//                              → fakesink (prerolls → ASYNC_DONE)
-//   5. ASYNC_DONE fires after both branches complete, so caps are guaranteed
-//      available when collect_streams() queries them for the SDP.
 void DeepStreamPipeline::on_media_configure(
     GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data)
 {
@@ -221,11 +208,14 @@ void DeepStreamPipeline::on_media_configure(
         return;
     }
 
+    g_object_set(appsrc, "min-latency", G_GUINT64_CONSTANT(0), nullptr);
+
     g_mutex_lock(&self->rtsp_appsrc_mutex_);
     if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
-    self->rtsp_appsrc_ = appsrc;
+    self->rtsp_appsrc_ = gst_object_ref(appsrc);
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
+    gst_object_unref(appsrc);
     std::printf("[RTSP] factory configured\n");
 }
 
