@@ -152,16 +152,15 @@ void DeepStreamPipeline::build() {
         "! x264enc tune=4 bitrate=4000 "
         "! rtph264pay name=pay0 config-interval=1 pt=96 )";
 
-    // Verify the factory pipeline parses before handing it to gst-rtsp-server.
+    // Test with gst_parse_launch — exactly what gst-rtsp-server calls internally.
     {
-        std::string inner = factory_str.substr(1, factory_str.size() - 2);
         GError* perr = nullptr;
-        GstElement* test = gst_parse_bin_from_description(inner.c_str(), TRUE, &perr);
+        GstElement* test = gst_parse_launch(factory_str.c_str(), &perr);
         if (test) {
-            std::printf("[RTSP] factory pipeline OK: %s\n", factory_str.c_str());
+            std::printf("[RTSP] gst_parse_launch OK: %s\n", factory_str.c_str());
             gst_object_unref(test);
         } else {
-            g_printerr("[RTSP] factory pipeline PARSE ERROR: %s\n  string: %s\n",
+            g_printerr("[RTSP] gst_parse_launch FAILED: %s\n  string: %s\n",
                 perr ? perr->message : "unknown", factory_str.c_str());
             g_clear_error(&perr);
         }
@@ -178,6 +177,11 @@ void DeepStreamPipeline::build() {
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
     gst_rtsp_server_attach(rtsp_server_, nullptr);
+
+    g_signal_connect(rtsp_server_, "client-connected",
+        G_CALLBACK(+[](GstRTSPServer*, GstRTSPClient*, gpointer) {
+            std::printf("[RTSP] client-connected\n");
+        }), nullptr);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
