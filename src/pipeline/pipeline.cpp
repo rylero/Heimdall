@@ -2,7 +2,7 @@
 #include <stdexcept>
 #include <string>
 
-static constexpr int RTSP_SERV_PORT = 8554;
+static constexpr int RTSP_SERV_PORT = 8555;
 
 DeepStreamPipeline::DeepStreamPipeline(
     std::vector<CameraConfig> cameras,
