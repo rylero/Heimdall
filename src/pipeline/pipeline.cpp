@@ -198,7 +198,7 @@ GstFlowReturn DeepStreamPipeline::on_new_sample(GstAppSink* appsink, gpointer da
     if (!sample) return GST_FLOW_OK;
 
     g_mutex_lock(&self->rtsp_appsrc_mutex_);
-    GstElement* appsrc = self->rtsp_appsrc_ ? gst_object_ref(self->rtsp_appsrc_) : nullptr;
+    GstElement* appsrc = self->rtsp_appsrc_ ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
     if (appsrc) {
