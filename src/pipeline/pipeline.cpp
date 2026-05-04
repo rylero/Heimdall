@@ -117,7 +117,7 @@ void DeepStreamPipeline::build() {
                     return DeepStreamPipeline::on_new_sample(s, d);
                 }
             };
-            gst_app_sink_set_callbacks(asink, &cbs, this, nullptr);
+            gst_app_sink_set_callbacks(GST_APP_SINK(asink), &cbs, this, nullptr);
             rtsp_appsink_ = asink;
         } else {
             GstElement* drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
