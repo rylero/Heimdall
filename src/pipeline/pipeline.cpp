@@ -153,12 +153,12 @@ void DeepStreamPipeline::build() {
     // first real frame arrives via probe → caps flow → check_prerolled → 200 OK.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
-    const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=1 do-timestamp=true format=3 "
-        "! videoconvert "
-        "! x264enc tune=zerolatency speed-preset=ultrafast " // Optimized for streaming
-        "! rtph264pay name=pay0 pt=96 )";
-
+const std::string factory_str =
+    "( appsrc name=rtsp_src is-live=true format=GST_FORMAT_TIME "
+    "! videoconvert "
+    "! video/x-raw,format=I420 "
+    "! x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 "
+    "! rtph264pay name=pay0 pt=96 )";
     rtsp_server_ = gst_rtsp_server_new();
     gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
 
@@ -179,7 +179,6 @@ void DeepStreamPipeline::build() {
 void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data) {
     auto* self = static_cast<DeepStreamPipeline*>(data);
     gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
-
     GstElement* bin = gst_rtsp_media_get_element(media);
     GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
     gst_object_unref(bin);
@@ -187,18 +186,12 @@ void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* 
     if (appsrc) {
         // Fix: Explicitly set caps so the RTSP server can answer DESCRIBE immediately
         // Assuming your cameras_[0] format is known (usually NV12 or RGBA for DeepStream)
-        GstCaps* caps = gst_caps_new_simple("video/x-raw",
-            "format", G_TYPE_STRING, "NV12", // Replace with your actual format if different
-            "width",  G_TYPE_INT, self->cameras_[0].width,
-            "height", G_TYPE_INT, self->cameras_[0].height,
-            "framerate", GST_TYPE_FRACTION, 30, 1, // Adjust to your camera FPS
-            nullptr);
-        
-        g_object_set(G_OBJECT(appsrc), "caps", caps, nullptr);
-        gst_caps_unref(caps);
-        g_object_set(G_OBJECT(appsrc), 
-            "emit-signals", TRUE, 
-            "is-live", TRUE, 
+        gGstCaps* caps = gst_caps_from_string("video/x-raw, format=NV12, width=1920, height=1080, framerate=30/1");
+g_object_set(G_OBJECT(appsrc), "caps", caps, NULL);
+gst_caps_unref(caps);
+        g_object_set(G_OBJECT(appsrc),
+            "emit-signals", TRUE,
+            "is-live", TRUE,
             "min-latency", 0,
             "max-buffers", 2, // Don't let it backlog
             "leaky-type", 2,  // Drop old buffers (upstream won't block)
