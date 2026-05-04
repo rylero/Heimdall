@@ -154,9 +154,9 @@ void DeepStreamPipeline::build() {
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=1 do-timestamp=true "
+        "( appsrc name=rtsp_src is-live=1 do-timestamp=true format=3 "
         "! videoconvert "
-        "! x264enc tune=4 speed-preset=1 "
+        "! x264enc tune=zerolatency speed-preset=ultrafast " // Optimized for streaming
         "! rtph264pay name=pay0 pt=96 )";
 
     rtsp_server_ = gst_rtsp_server_new();
@@ -176,26 +176,33 @@ void DeepStreamPipeline::build() {
 }
 
 // Store the factory's appsrc so the q_rtsp pad probe can push frames into it.
-void DeepStreamPipeline::on_media_configure(
-    GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data)
-{
+void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data) {
     auto* self = static_cast<DeepStreamPipeline*>(data);
-
     gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
 
-    GstElement* bin    = gst_rtsp_media_get_element(media);
+    GstElement* bin = gst_rtsp_media_get_element(media);
     GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
     gst_object_unref(bin);
 
-    if (!appsrc) { g_printerr("[RTSP] appsrc not found\n"); return; }
+    if (appsrc) {
+        // Fix: Explicitly set caps so the RTSP server can answer DESCRIBE immediately
+        // Assuming your cameras_[0] format is known (usually NV12 or RGBA for DeepStream)
+        GstCaps* caps = gst_caps_new_simple("video/x-raw",
+            "format", G_TYPE_STRING, "NV12", // Replace with your actual format if different
+            "width",  G_TYPE_INT, self->cameras_[0].width,
+            "height", G_TYPE_INT, self->cameras_[0].height,
+            "framerate", GST_TYPE_FRACTION, 30, 1, // Adjust to your camera FPS
+            nullptr);
+        
+        g_object_set(G_OBJECT(appsrc), "caps", caps, nullptr);
+        gst_caps_unref(caps);
 
-    g_mutex_lock(&self->rtsp_appsrc_mutex_);
-    if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
-    self->rtsp_appsrc_ = GST_ELEMENT(gst_object_ref(appsrc));
-    g_mutex_unlock(&self->rtsp_appsrc_mutex_);
-
-    gst_object_unref(appsrc);
-    std::printf("[RTSP] factory configured\n");
+        g_mutex_lock(&self->rtsp_appsrc_mutex_);
+        if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
+        self->rtsp_appsrc_ = GST_ELEMENT(gst_object_ref(appsrc));
+        g_mutex_unlock(&self->rtsp_appsrc_mutex_);
+        gst_object_unref(appsrc);
+    }
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
