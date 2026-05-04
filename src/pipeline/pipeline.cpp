@@ -232,9 +232,16 @@ GstFlowReturn DeepStreamPipeline::on_new_sample(GstAppSink* appsink, gpointer da
     GstElement* appsrc = self->rtsp_appsrc_ ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
+    static int s_push_count = 0;
+    static int s_null_count = 0;
     if (appsrc) {
-        gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
+        GstFlowReturn ret = gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
+        if (++s_push_count <= 5 || s_push_count % 300 == 0)
+            g_print("[RTSP] on_new_sample push #%d → %s\n", s_push_count, gst_flow_get_name(ret));
         gst_object_unref(appsrc);
+    } else {
+        if (++s_null_count <= 3 || s_null_count % 300 == 0)
+            g_print("[RTSP] on_new_sample #%d: appsrc=NULL, skipping\n", s_null_count);
     }
 
     gst_sample_unref(sample);
