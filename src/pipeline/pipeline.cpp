@@ -142,10 +142,10 @@ void DeepStreamPipeline::build() {
     // can generate a valid SDP before any data flows.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
-    // Simplified factory string — format=time and key-int-max omitted to avoid
-    // potential parse issues on older GStreamer versions.
+    // format=3 is GST_FORMAT_TIME; fixes "segment format mismatch" CRITICAL
+    // that gst-rtsp-server triggers when querying the appsrc's running time.
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=true "
+        "( appsrc name=rtsp_src is-live=true format=3 "
         "caps=\"video/x-raw,format=I420,width=" + w + ",height=" + h + "\" "
         "! x264enc tune=4 bitrate=4000 "
         "! rtph264pay name=pay0 config-interval=1 pt=96 )";
@@ -172,10 +172,24 @@ void DeepStreamPipeline::build() {
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
     gst_rtsp_media_factory_set_launch(factory, factory_str.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
-    g_signal_connect(factory, "media-configure", G_CALLBACK(on_media_configure), this);
+    // Check signal handler IDs — 0 means the signal name doesn't exist in
+    // this gst-rtsp-server version and the connection silently failed.
+    gulong id1 = g_signal_connect(factory, "media-configure",
+                     G_CALLBACK(on_media_configure), this);
+    gulong id2 = g_signal_connect(factory, "media-constructed",
+                     G_CALLBACK(on_media_configure), this);
+    std::printf("[RTSP] signal ids: media-configure=%lu  media-constructed=%lu\n",
+        id1, id2);
+
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
     gst_rtsp_server_attach(rtsp_server_, nullptr);
+
+    // Confirm the server layer sees client connections.
+    g_signal_connect(rtsp_server_, "client-connected",
+        G_CALLBACK(+[](GstRTSPServer*, GstRTSPClient*, gpointer) {
+            std::printf("[RTSP] client-connected fired\n");
+        }), nullptr);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
