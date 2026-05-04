@@ -84,41 +84,48 @@ void DeepStreamPipeline::build() {
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
         if (i == 0) {
+            // Bypass appsink entirely — both emit-signals and set_callbacks failed
+            // to fire.  Use a fakesink to keep the pipeline flowing and intercept
+            // frames via a pad probe on videoconvert's src pad.  Probes are lower
+            // level than appsink callbacks and always fire.
             GstElement* vcvt  = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-            GstElement* asink = gst_element_factory_make("appsink",      "rtsp_appsink");
-            if (!vcvt || !asink)
-                throw std::runtime_error("Failed to create RTSP appsink elements");
+            GstElement* fsink = gst_element_factory_make("fakesink",     "rtsp_fsink");
+            if (!vcvt || !fsink)
+                throw std::runtime_error("Failed to create RTSP vcvt/fakesink elements");
+            g_object_set(fsink, "sync", FALSE, nullptr);
 
-            // Probe on q_rtsp src to confirm the branch is flowing at all.
-            {
-                GstPad* p = gst_element_get_static_pad(q_rtsp, "src");
-                gst_pad_add_probe(p, GST_PAD_PROBE_TYPE_BUFFER,
-                    +[](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
-                        static int n = 0;
-                        if (++n <= 3 || n % 300 == 0)
-                            g_print("[RTSP] q_rtsp buf #%d\n", n);
-                        return GST_PAD_PROBE_OK;
-                    }, nullptr, nullptr);
-                gst_object_unref(p);
-            }
+            gst_bin_add_many(GST_BIN(pipeline_), vcvt, fsink, nullptr);
+            if (!gst_element_link_many(q_rtsp, vcvt, fsink, nullptr))
+                throw std::runtime_error("Failed to link RTSP fakesink branch");
 
-            g_object_set(asink, "sync", FALSE, "max-buffers", 2, "drop", TRUE, nullptr);
+            // Probe on videoconvert's src pad: intercept each converted frame
+            // and push it into the factory appsrc so the RTSP factory pipeline
+            // has data to encode and stream.
+            GstPad* vcvt_src = gst_element_get_static_pad(vcvt, "src");
+            gst_pad_add_probe(vcvt_src, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad* pad, GstPadProbeInfo* info, gpointer data) -> GstPadProbeReturn {
+                    auto* self = static_cast<DeepStreamPipeline*>(data);
 
-            gst_bin_add_many(GST_BIN(pipeline_), vcvt, asink, nullptr);
-            if (!gst_element_link_many(q_rtsp, vcvt, asink, nullptr))
-                throw std::runtime_error("Failed to link RTSP appsink branch");
+                    g_mutex_lock(&self->rtsp_appsrc_mutex_);
+                    GstElement* appsrc = self->rtsp_appsrc_
+                        ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
+                    g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
-            // Use callbacks rather than emit-signals to avoid the g_signal_connect
-            // path which is unreliable for appsink in some GStreamer versions.
-            static GstAppSinkCallbacks cbs = {
-                nullptr,   // eos
-                nullptr,   // new_preroll
-                [](GstAppSink* s, gpointer d) -> GstFlowReturn {
-                    return DeepStreamPipeline::on_new_sample(s, d);
-                }
-            };
-            gst_app_sink_set_callbacks(GST_APP_SINK(asink), &cbs, this, nullptr);
-            rtsp_appsink_ = asink;
+                    if (appsrc) {
+                        GstBuffer* buf  = gst_buffer_ref(GST_PAD_PROBE_INFO_BUFFER(info));
+                        GstCaps*   caps = gst_pad_get_current_caps(pad);
+                        if (caps) {
+                            GstSample* s = gst_sample_new(buf, caps, nullptr, nullptr);
+                            gst_app_src_push_sample(GST_APP_SRC(appsrc), s);
+                            gst_sample_unref(s);
+                            gst_caps_unref(caps);
+                        }
+                        gst_buffer_unref(buf);
+                        gst_object_unref(appsrc);
+                    }
+                    return GST_PAD_PROBE_OK;
+                }, this, nullptr);
+            gst_object_unref(vcvt_src);
         } else {
             GstElement* drop = gst_element_factory_make("fakesink", ("rtsp_drop_" + std::to_string(i)).c_str());
             gst_bin_add(GST_BIN(pipeline_), drop);
@@ -231,32 +238,10 @@ void DeepStreamPipeline::on_media_configure(
     std::printf("[RTSP] factory configured\n");
 }
 
-// Called from the main pipeline's streaming thread each time a raw frame
-// is available.  Pushes it into the RTSP factory's appsrc.
-GstFlowReturn DeepStreamPipeline::on_new_sample(GstAppSink* appsink, gpointer data)
+// Retained as a no-op stub; the actual frame push is now done by the
+// pad probe on videoconvert's src pad (see build()).
+GstFlowReturn DeepStreamPipeline::on_new_sample(GstAppSink*, gpointer)
 {
-    auto* self = static_cast<DeepStreamPipeline*>(data);
-
-    GstSample* sample = gst_app_sink_pull_sample(appsink);
-    if (!sample) return GST_FLOW_OK;
-
-    g_mutex_lock(&self->rtsp_appsrc_mutex_);
-    GstElement* appsrc = self->rtsp_appsrc_ ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
-    g_mutex_unlock(&self->rtsp_appsrc_mutex_);
-
-    static int s_push_count = 0;
-    static int s_null_count = 0;
-    if (appsrc) {
-        GstFlowReturn ret = gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
-        if (++s_push_count <= 5 || s_push_count % 300 == 0)
-            g_print("[RTSP] on_new_sample push #%d → %s\n", s_push_count, gst_flow_get_name(ret));
-        gst_object_unref(appsrc);
-    } else {
-        if (++s_null_count <= 3 || s_null_count % 300 == 0)
-            g_print("[RTSP] on_new_sample #%d: appsrc=NULL, skipping\n", s_null_count);
-    }
-
-    gst_sample_unref(sample);
     return GST_FLOW_OK;
 }
 
