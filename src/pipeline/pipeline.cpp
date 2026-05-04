@@ -143,7 +143,7 @@ void DeepStreamPipeline::build() {
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=false format=time "
+        "( appsrc name=rtsp_src is-live=true format=time "
         "caps=\"video/x-raw,format=I420,width=" + w + ",height=" + h + "\" "
         "! x264enc tune=4 bitrate=4000 key-int-max=30 "
         "! rtph264pay name=pay0 config-interval=1 pt=96 )";
