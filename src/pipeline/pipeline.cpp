@@ -142,13 +142,17 @@ void DeepStreamPipeline::build() {
     // can generate a valid SDP before any data flows.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
-    // format=3 is GST_FORMAT_TIME; fixes "segment format mismatch" CRITICAL
-    // that gst-rtsp-server triggers when querying the appsrc's running time.
+    // is-live=false so prepare() prerolls the pipeline and negotiates caps
+    // before building the SDP.  fakesink after pay0 provides a downstream
+    // sink so preroll completes; gst-rtsp-server unlinks it when a client
+    // sends SETUP and inserts its own transport element instead.
+    // format=3 (GST_FORMAT_TIME) prevents the segment-format CRITICAL.
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=true format=3 "
+        "( appsrc name=rtsp_src is-live=false format=3 "
         "caps=\"video/x-raw,format=I420,width=" + w + ",height=" + h + "\" "
         "! x264enc tune=4 bitrate=4000 "
-        "! rtph264pay name=pay0 config-interval=1 pt=96 )";
+        "! rtph264pay name=pay0 config-interval=1 pt=96 "
+        "! fakesink sync=false )";
 
     // Verify the factory pipeline parses before handing it to gst-rtsp-server.
     {
@@ -172,45 +176,35 @@ void DeepStreamPipeline::build() {
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
     gst_rtsp_media_factory_set_launch(factory, factory_str.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
-    // Check signal handler IDs — 0 means the signal name doesn't exist in
-    // this gst-rtsp-server version and the connection silently failed.
-    gulong id1 = g_signal_connect(factory, "media-configure",
-                     G_CALLBACK(on_media_configure), this);
-    gulong id2 = g_signal_connect(factory, "media-constructed",
-                     G_CALLBACK(on_media_configure), this);
-    std::printf("[RTSP] signal ids: media-configure=%lu  media-constructed=%lu\n",
-        id1, id2);
-
+    g_signal_connect(factory, "media-configure", G_CALLBACK(on_media_configure), this);
     gst_rtsp_mount_points_add_factory(mounts, "/stream", factory);
     g_object_unref(mounts);
     gst_rtsp_server_attach(rtsp_server_, nullptr);
 
-    // Confirm the server layer sees client connections.
-    g_signal_connect(rtsp_server_, "client-connected",
-        G_CALLBACK(+[](GstRTSPServer*, GstRTSPClient*, gpointer) {
-            std::printf("[RTSP] client-connected fired\n");
-        }), nullptr);
-
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/stream\n", RTSP_SERV_PORT);
 }
 
-// Called once when gst-rtsp-server creates the shared media pipeline.
-// Wires the factory's appsrc to the main pipeline's appsink, then pre-starts
-// the factory pipeline and pushes a single black frame so that x264enc and
-// rtph264pay fully negotiate their caps before gst_rtsp_media_prepare() calls
-// collect_streams() and tries to build the SDP.
+// Called when gst-rtsp-server constructs the shared media pipeline.
+// Wires the factory's appsrc to the main pipeline's appsink and primes it
+// with one black frame.  Because the factory uses is-live=false + fakesink,
+// prepare() will preroll the pipeline (fakesink receives the black frame →
+// ASYNC_DONE posted), negotiate caps on rtph264pay's src pad, and build a
+// valid SDP — all without us manually managing pipeline state here.
 void DeepStreamPipeline::on_media_configure(
     GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer data)
 {
     auto* self = static_cast<DeepStreamPipeline*>(data);
-    std::printf("[RTSP] on_media_configure entered\n");
+
+    // Keep the prepared media alive when clients disconnect so subsequent
+    // DESCRIBE requests reuse the already-prepared pipeline.
+    gst_rtsp_media_set_suspend_mode(media, GST_RTSP_SUSPEND_MODE_NONE);
 
     GstElement* bin    = gst_rtsp_media_get_element(media);
     GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
+    gst_object_unref(bin);
 
     if (!appsrc) {
-        g_printerr("[RTSP] appsrc 'rtsp_src' not found — check factory launch string\n");
-        gst_object_unref(bin);
+        g_printerr("[RTSP] appsrc 'rtsp_src' not found\n");
         return;
     }
 
@@ -219,21 +213,10 @@ void DeepStreamPipeline::on_media_configure(
     self->rtsp_appsrc_ = appsrc;
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
-    // Start the factory pipeline and WAIT for it to reach PLAYING so the
-    // appsrc streaming thread is actually running before we push.
-    gst_element_set_state(bin, GST_STATE_PLAYING);
-    GstState reached = GST_STATE_NULL, pending = GST_STATE_NULL;
-    GstStateChangeReturn scr =
-        gst_element_get_state(bin, &reached, &pending, 2 * GST_SECOND);
-    std::printf("[RTSP] factory set_state(PLAYING) → %s (reached=%s pending=%s)\n",
-        gst_element_state_change_return_get_name(scr),
-        gst_element_state_get_name(reached),
-        gst_element_state_get_name(pending));
-
-    // Push a black I420 frame with valid timestamps so x264enc encodes it
-    // and rtph264pay stores a CAPS sticky event on its src pad.
-    // gst_pad_get_current_caps() will return those caps even before any peer
-    // is linked, letting gst_rtsp_media_prepare() build the SDP.
+    // Prime the appsrc queue with one black I420 frame.  When prepare()
+    // transitions the pipeline to PAUSED, this frame flows through
+    // x264enc → rtph264pay → fakesink, completing preroll and negotiating
+    // caps so gst-rtsp-server can build the SDP without any real camera frame.
     const gint w = static_cast<gint>(self->cameras_[0].width);
     const gint h = static_cast<gint>(self->cameras_[0].height);
     const gsize sz = static_cast<gsize>(w * h * 3 / 2);
@@ -251,33 +234,9 @@ void DeepStreamPipeline::on_media_configure(
     GstSample* sample = gst_sample_new(buf, vcaps, nullptr, nullptr);
     gst_buffer_unref(buf);
     gst_caps_unref(vcaps);
-    GstFlowReturn fr = gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
+    gst_app_src_push_sample(GST_APP_SRC(appsrc), sample);
     gst_sample_unref(sample);
-    std::printf("[RTSP] dummy frame pushed, flow=%s\n", gst_flow_get_name(fr));
-
-    // Poll until rtph264pay has current caps on its src pad (max 2 s).
-    GstElement* pay    = gst_bin_get_by_name(GST_BIN(bin), "pay0");
-    GstPad*     srcpad = pay ? gst_element_get_static_pad(pay, "src") : nullptr;
-    std::printf("[RTSP] pay0=%p srcpad=%p\n", (void*)pay, (void*)srcpad);
-    bool caps_found = false;
-    for (int i = 0; i < 200 && srcpad; ++i) {
-        GstCaps* c = gst_pad_get_current_caps(srcpad);
-        if (c) {
-            gchar* cs = gst_caps_to_string(c);
-            std::printf("[RTSP] caps ready after %d ms: %s\n", i * 10, cs);
-            g_free(cs);
-            gst_caps_unref(c);
-            caps_found = true;
-            break;
-        }
-        g_usleep(10 * 1000);
-    }
-    if (!caps_found)
-        g_printerr("[RTSP] caps NOT found after 2s — SDP will likely fail\n");
-
-    if (srcpad) gst_object_unref(srcpad);
-    if (pay)    gst_object_unref(pay);
-    gst_object_unref(bin);
+    std::printf("[RTSP] factory configured, dummy frame queued\n");
 }
 
 // Called from the main pipeline's streaming thread each time a raw frame
