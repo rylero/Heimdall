@@ -142,11 +142,28 @@ void DeepStreamPipeline::build() {
     // can generate a valid SDP before any data flows.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
+    // Simplified factory string — format=time and key-int-max omitted to avoid
+    // potential parse issues on older GStreamer versions.
     const std::string factory_str =
-        "( appsrc name=rtsp_src is-live=true format=time "
+        "( appsrc name=rtsp_src is-live=true "
         "caps=\"video/x-raw,format=I420,width=" + w + ",height=" + h + "\" "
-        "! x264enc tune=4 bitrate=4000 key-int-max=30 "
+        "! x264enc tune=4 bitrate=4000 "
         "! rtph264pay name=pay0 config-interval=1 pt=96 )";
+
+    // Verify the factory pipeline parses before handing it to gst-rtsp-server.
+    {
+        std::string inner = factory_str.substr(1, factory_str.size() - 2);
+        GError* perr = nullptr;
+        GstElement* test = gst_parse_bin_from_description(inner.c_str(), TRUE, &perr);
+        if (test) {
+            std::printf("[RTSP] factory pipeline OK: %s\n", factory_str.c_str());
+            gst_object_unref(test);
+        } else {
+            g_printerr("[RTSP] factory pipeline PARSE ERROR: %s\n  string: %s\n",
+                perr ? perr->message : "unknown", factory_str.c_str());
+            g_clear_error(&perr);
+        }
+    }
 
     rtsp_server_ = gst_rtsp_server_new();
     gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
