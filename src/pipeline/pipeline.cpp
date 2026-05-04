@@ -212,7 +212,7 @@ void DeepStreamPipeline::on_media_configure(
 
     g_mutex_lock(&self->rtsp_appsrc_mutex_);
     if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
-    self->rtsp_appsrc_ = gst_object_ref(appsrc);
+    self->rtsp_appsrc_ = GST_ELEMENT(gst_object_ref(appsrc));
     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
     gst_object_unref(appsrc);
