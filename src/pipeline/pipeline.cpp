@@ -106,19 +106,39 @@ void DeepStreamPipeline::build() {
             if (!gst_element_link_many(q_rtsp, conv_rtsp, cap_rtsp, fsink, nullptr))
                 throw std::runtime_error("Failed to link rtsp branch");
 
+            // Diagnostic probe on q_rtsp src: confirms tee is distributing to this branch.
+            GstPad* q_rtsp_src_diag = gst_element_get_static_pad(q_rtsp, "src");
+            gst_pad_add_probe(q_rtsp_src_diag, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                    static gint n = 0;
+                    if (g_atomic_int_add(&n, 1) < 3)
+                        g_printerr("[diag] q_rtsp flowing\n");
+                    return GST_PAD_PROBE_OK;
+                }, nullptr, nullptr);
+            gst_object_unref(q_rtsp_src_diag);
+
             GstPad* qr_src = gst_element_get_static_pad(cap_rtsp, "src");
             gst_pad_add_probe(qr_src, GST_PAD_PROBE_TYPE_BUFFER,
                 [](GstPad* pad, GstPadProbeInfo* info, gpointer data) -> GstPadProbeReturn {
                     auto* self = static_cast<DeepStreamPipeline*>(data);
+                    static gint n = 0;
+                    gint frame = g_atomic_int_add(&n, 1);
 
                     g_mutex_lock(&self->rtsp_appsrc_mutex_);
                     GstElement* appsrc = self->rtsp_appsrc_
                         ? GST_ELEMENT(gst_object_ref(self->rtsp_appsrc_)) : nullptr;
                     g_mutex_unlock(&self->rtsp_appsrc_mutex_);
 
+                    if (frame < 3)
+                        g_printerr("[diag] cap_rtsp probe #%d: appsrc=%s\n",
+                                   frame, appsrc ? "ready" : "null");
+
                     if (appsrc) {
                         GstBuffer* buf  = gst_buffer_ref(GST_PAD_PROBE_INFO_BUFFER(info));
                         GstCaps*   caps = gst_pad_get_current_caps(pad);
+                        if (frame < 3)
+                            g_printerr("[diag] cap_rtsp probe #%d: caps=%s\n",
+                                       frame, caps ? "ok" : "NULL — skipping push");
                         if (caps) {
                             GstSample* s = gst_sample_new(buf, caps, nullptr, nullptr);
                             gst_app_src_push_sample(GST_APP_SRC(appsrc), s);
@@ -202,6 +222,7 @@ void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* 
     GstElement* appsrc = gst_bin_get_by_name(GST_BIN(bin), "rtsp_src");
     gst_object_unref(bin);
 
+    g_printerr("[diag] on_media_configure: appsrc %s\n", appsrc ? "FOUND" : "NOT FOUND");
     if (appsrc) {
         // Set caps now so the appsrc reports a non-NULL format immediately —
         // the RTSP server queries get_caps during SDP construction and the
