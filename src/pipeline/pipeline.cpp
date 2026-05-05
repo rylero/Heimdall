@@ -203,6 +203,18 @@ void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* 
     gst_object_unref(bin);
 
     if (appsrc) {
+        // Set caps now so the appsrc reports a non-NULL format immediately —
+        // the RTSP server queries get_caps during SDP construction and the
+        // probe may call gst_pad_get_current_caps before the first buffer flows.
+        GstCaps* caps = gst_caps_new_simple("video/x-raw",
+            "format",    G_TYPE_STRING,       "NV12",
+            "width",     G_TYPE_INT,          static_cast<gint>(self->cameras_[0].width),
+            "height",    G_TYPE_INT,          static_cast<gint>(self->cameras_[0].height),
+            "framerate", GST_TYPE_FRACTION,   self->cameras_[0].fps, 1,
+            nullptr);
+        gst_app_src_set_caps(GST_APP_SRC(appsrc), caps);
+        gst_caps_unref(caps);
+
         g_object_set(G_OBJECT(appsrc), "is-live", TRUE, "min-latency", (gint64)0, nullptr);
 
         g_mutex_lock(&self->rtsp_appsrc_mutex_);
