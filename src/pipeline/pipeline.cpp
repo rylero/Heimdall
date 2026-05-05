@@ -199,18 +199,7 @@ void DeepStreamPipeline::on_media_configure(GstRTSPMediaFactory*, GstRTSPMedia* 
     gst_object_unref(bin);
 
     if (appsrc) {
-        // Fix: Explicitly set caps so the RTSP server can answer DESCRIBE immediately
-        // Assuming your cameras_[0] format is known (usually NV12 or RGBA for DeepStream)
-        gGstCaps* caps = gst_caps_from_string("video/x-raw, format=NV12, width=1920, height=1080, framerate=30/1");
-g_object_set(G_OBJECT(appsrc), "caps", caps, NULL);
-gst_caps_unref(caps);
-        g_object_set(G_OBJECT(appsrc),
-            "emit-signals", TRUE,
-            "is-live", TRUE,
-            "min-latency", 0,
-            "max-buffers", 2, // Don't let it backlog
-            "leaky-type", 2,  // Drop old buffers (upstream won't block)
-            nullptr);
+        g_object_set(G_OBJECT(appsrc), "is-live", TRUE, "min-latency", (gint64)0, nullptr);
 
         g_mutex_lock(&self->rtsp_appsrc_mutex_);
         if (self->rtsp_appsrc_) gst_object_unref(self->rtsp_appsrc_);
