@@ -81,10 +81,13 @@ void DeepStreamPipeline::build() {
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
         if (i == 0) {
-            // RTSP branch: q_rtsp → nvvidconv_rtsp → capsfilter_rtsp → fakesink.
-            // nvvidconv converts NVMM GPU buffers to system NV12 so the probe
-            // can push them into the CPU-side appsrc in the RTSP factory.
-            GstElement* conv_rtsp = gst_element_factory_make("nvvidconv",  "rtsp_conv");
+            // USB cameras exit the tee as system memory (jpegdec output) — nvvidconv
+            // needs NVMM input and will stall on system memory, causing zero flow and
+            // NULL current_caps on the probe pad.  Use videoconvert for USB (CPU→CPU)
+            // and nvvidconv for CSI (NVMM→system).
+            const bool is_csi = (cameras_[0].type == CameraType::CSI);
+            GstElement* conv_rtsp = gst_element_factory_make(
+                is_csi ? "nvvidconv" : "videoconvert", "rtsp_conv");
             GstElement* cap_rtsp  = gst_element_factory_make("capsfilter", "rtsp_cap");
             GstElement* fsink     = gst_element_factory_make("fakesink",   "rtsp_fsink");
             if (!conv_rtsp || !cap_rtsp || !fsink)
@@ -163,13 +166,14 @@ void DeepStreamPipeline::build() {
     // but with appsrc instead of videotestsrc, fed by the q_rtsp pad probe.
     // is-live=1 → NO_PREROLL → prepare() sets PLAYING immediately →
     // first real frame arrives via probe → caps flow → check_prerolled → 200 OK.
-    const std::string w = std::to_string(cameras_[0].width);
-    const std::string h = std::to_string(cameras_[0].height);
+    const std::string w   = std::to_string(cameras_[0].width);
+    const std::string h   = std::to_string(cameras_[0].height);
+    const std::string fps = std::to_string(cameras_[0].fps);
     // Inline caps after appsrc → GStreamer resolves SDP at DESCRIBE time
     // without waiting for a client to push a frame first.
     const std::string factory_str =
         "( appsrc name=rtsp_src is-live=true format=time "
-        "! video/x-raw,format=NV12,width=" + w + ",height=" + h + ",framerate=30/1 "
+        "! video/x-raw,format=NV12,width=" + w + ",height=" + h + ",framerate=" + fps + "/1 "
         "! videoconvert "
         "! video/x-raw,format=I420 "
         "! x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 "
