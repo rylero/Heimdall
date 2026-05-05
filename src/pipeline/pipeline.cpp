@@ -81,17 +81,29 @@ void DeepStreamPipeline::build() {
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
         if (i == 0) {
-            // RTSP branch: q_rtsp → fakesink (keeps pipeline flowing).
-            // A pad probe on q_rtsp's src intercepts each raw frame and
-            // pushes it directly into the RTSP factory's appsrc.
-            GstElement* fsink = gst_element_factory_make("fakesink", "rtsp_fsink");
-            if (!fsink) throw std::runtime_error("Failed to create RTSP fakesink");
-            g_object_set(fsink, "sync", FALSE, nullptr);
-            gst_bin_add(GST_BIN(pipeline_), fsink);
-            if (!gst_element_link(q_rtsp, fsink))
-                throw std::runtime_error("Failed to link q_rtsp to fakesink");
+            // RTSP branch: q_rtsp → nvvidconv_rtsp → capsfilter_rtsp → fakesink.
+            // nvvidconv converts NVMM GPU buffers to system NV12 so the probe
+            // can push them into the CPU-side appsrc in the RTSP factory.
+            GstElement* conv_rtsp = gst_element_factory_make("nvvidconv",  "rtsp_conv");
+            GstElement* cap_rtsp  = gst_element_factory_make("capsfilter", "rtsp_cap");
+            GstElement* fsink     = gst_element_factory_make("fakesink",   "rtsp_fsink");
+            if (!conv_rtsp || !cap_rtsp || !fsink)
+                throw std::runtime_error("Failed to create RTSP branch elements");
 
-            GstPad* qr_src = gst_element_get_static_pad(q_rtsp, "src");
+            GstCaps* rtsp_caps = gst_caps_new_simple("video/x-raw",
+                "format", G_TYPE_STRING, "NV12",
+                "width",  G_TYPE_INT,    static_cast<gint>(cameras_[0].width),
+                "height", G_TYPE_INT,    static_cast<gint>(cameras_[0].height),
+                nullptr);
+            g_object_set(cap_rtsp, "caps", rtsp_caps, nullptr);
+            gst_caps_unref(rtsp_caps);
+
+            g_object_set(fsink, "sync", FALSE, nullptr);
+            gst_bin_add_many(GST_BIN(pipeline_), conv_rtsp, cap_rtsp, fsink, nullptr);
+            if (!gst_element_link_many(q_rtsp, conv_rtsp, cap_rtsp, fsink, nullptr))
+                throw std::runtime_error("Failed to link rtsp branch");
+
+            GstPad* qr_src = gst_element_get_static_pad(cap_rtsp, "src");
             gst_pad_add_probe(qr_src, GST_PAD_PROBE_TYPE_BUFFER,
                 [](GstPad* pad, GstPadProbeInfo* info, gpointer data) -> GstPadProbeReturn {
                     auto* self = static_cast<DeepStreamPipeline*>(data);
