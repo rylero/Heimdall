@@ -165,12 +165,15 @@ void DeepStreamPipeline::build() {
     // first real frame arrives via probe → caps flow → check_prerolled → 200 OK.
     const std::string w = std::to_string(cameras_[0].width);
     const std::string h = std::to_string(cameras_[0].height);
-const std::string factory_str =
-    "( appsrc name=rtsp_src is-live=true format=GST_FORMAT_TIME "
-    "! videoconvert "
-    "! video/x-raw,format=I420 "
-    "! x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 "
-    "! rtph264pay name=pay0 pt=96 )";
+    // Inline caps after appsrc → GStreamer resolves SDP at DESCRIBE time
+    // without waiting for a client to push a frame first.
+    const std::string factory_str =
+        "( appsrc name=rtsp_src is-live=true format=time "
+        "! video/x-raw,format=NV12,width=" + w + ",height=" + h + ",framerate=30/1 "
+        "! videoconvert "
+        "! video/x-raw,format=I420 "
+        "! x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 "
+        "! rtph264pay name=pay0 pt=96 )";
     rtsp_server_ = gst_rtsp_server_new();
     gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
 
