@@ -1,9 +1,16 @@
 #include "probe.h"
 #include <gstnvdsmeta.h>
 #include <nvdsmeta.h>
+#include <cstdio>
+#include <atomic>
+
+static std::atomic<int> s_frame_count{0};
 
 GstPadProbeReturn detection_probe_cb(GstPad*, GstPadProbeInfo* info, gpointer user_data) {
     auto* cb = static_cast<DetectionCallback*>(user_data);
+    int n = ++s_frame_count;
+    if (n <= 10 || n % 100 == 0)
+        g_printerr("[probe] nvinfer frame %d\n", n);
 
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
     if (!buf) return GST_PAD_PROBE_OK;
