@@ -80,8 +80,22 @@ void DeepStreamPipeline::build() {
         if (i == 0) {
             const bool is_csi = (cameras_[0].type == CameraType::CSI);
             GstElement* rtsp_sink = gst_element_factory_make("nvrtspoutsinkbin", "rtsp-sink");
-            if (!rtsp_sink)
-                throw std::runtime_error("Failed to create nvrtspoutsinkbin");
+            GstElement* nvcvt     = gst_element_factory_make("nvvidconv",        "rtsp_nvcvt");
+            GstElement* caps_el   = gst_element_factory_make("capsfilter",       "rtsp_caps");
+            if (!rtsp_sink || !nvcvt || !caps_el)
+                throw std::runtime_error("Failed to create RTSP sink elements");
+
+            // nvrtspoutsinkbin requires NVMM NV12 — set explicit caps so nvvidconv
+            // negotiates the memory:NVMM feature rather than defaulting to system memory.
+            GstCaps* nvmm_caps = gst_caps_new_simple("video/x-raw",
+                "format", G_TYPE_STRING, "NV12",
+                "width",  G_TYPE_INT,    static_cast<gint>(cameras_[0].width),
+                "height", G_TYPE_INT,    static_cast<gint>(cameras_[0].height),
+                nullptr);
+            gst_caps_set_features(nvmm_caps, 0, gst_caps_features_new("memory:NVMM", nullptr));
+            g_object_set(caps_el, "caps", nvmm_caps, nullptr);
+            gst_caps_unref(nvmm_caps);
+
             g_object_set(rtsp_sink,
                 "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
                 "codec",     1,
@@ -89,19 +103,14 @@ void DeepStreamPipeline::build() {
                 nullptr);
 
             if (is_csi) {
-                // CSI: already NVMM — single nvvidconv suffices
-                GstElement* conv_rtsp = gst_element_factory_make("nvvidconv", "rtsp_conv");
-                if (!conv_rtsp) throw std::runtime_error("Failed to create rtsp_conv");
-                gst_bin_add_many(GST_BIN(pipeline_), conv_rtsp, rtsp_sink, nullptr);
-                if (!gst_element_link_many(q_rtsp, conv_rtsp, rtsp_sink, nullptr))
+                gst_bin_add_many(GST_BIN(pipeline_), nvcvt, caps_el, rtsp_sink, nullptr);
+                if (!gst_element_link_many(q_rtsp, nvcvt, caps_el, rtsp_sink, nullptr))
                     throw std::runtime_error("Failed to link RTSP branch (CSI)");
             } else {
-                // USB: system-memory frames — videoconvert→nvvidconv uploads to NVMM
-                GstElement* vcvt  = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-                GstElement* nvcvt = gst_element_factory_make("nvvidconv",    "rtsp_nvcvt");
-                if (!vcvt || !nvcvt) throw std::runtime_error("Failed to create rtsp converters");
-                gst_bin_add_many(GST_BIN(pipeline_), vcvt, nvcvt, rtsp_sink, nullptr);
-                if (!gst_element_link_many(q_rtsp, vcvt, nvcvt, rtsp_sink, nullptr))
+                GstElement* vcvt = gst_element_factory_make("videoconvert", "rtsp_vcvt");
+                if (!vcvt) throw std::runtime_error("Failed to create rtsp_vcvt");
+                gst_bin_add_many(GST_BIN(pipeline_), vcvt, nvcvt, caps_el, rtsp_sink, nullptr);
+                if (!gst_element_link_many(q_rtsp, vcvt, nvcvt, caps_el, rtsp_sink, nullptr))
                     throw std::runtime_error("Failed to link RTSP branch (USB)");
             }
         } else {
