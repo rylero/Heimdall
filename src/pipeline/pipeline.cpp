@@ -91,19 +91,15 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    GstElement* nvcvt   = gst_element_factory_make("nvvideoconvert", "out_nvcvt");
-    GstElement* vcvt    = gst_element_factory_make("videoconvert",   "out_vcvt");
-    GstElement* jpegenc = gst_element_factory_make("jpegenc",        "out_jpeg");
-    GstElement* msink   = gst_element_factory_make("multifilesink",  "out_sink");
-    if (!nvcvt || !vcvt || !jpegenc || !msink)
-        throw std::runtime_error("Failed to create debug JPEG sink elements");
-    g_object_set(msink, "location", "/tmp/frame%05d.jpg", "max-files", 30, nullptr);
-    gst_bin_add_many(GST_BIN(pipeline_), nvcvt, vcvt, jpegenc, msink, nullptr);
+    GstElement* outsink = gst_element_factory_make("fakesink", "out_sink");
+    if (!outsink) throw std::runtime_error("Failed to create fakesink");
+    g_object_set(outsink, "sync", FALSE, nullptr);
+    gst_bin_add(GST_BIN(pipeline_), outsink);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link_many(infer, nvcvt, vcvt, jpegenc, msink, nullptr))
-        throw std::runtime_error("Failed to link infer→jpeg→multifilesink");
+    if (!gst_element_link(infer, outsink))
+        throw std::runtime_error("Failed to link infer→fakesink");
 
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
     gst_pad_add_probe(infer_src, GST_PAD_PROBE_TYPE_BUFFER,
