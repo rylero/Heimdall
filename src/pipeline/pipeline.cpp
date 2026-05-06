@@ -77,45 +77,10 @@ void DeepStreamPipeline::build() {
         GstPad* qr = gst_element_get_static_pad(q_rtsp, "sink");
         gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
 
-        if (i == 0) {
-            const bool is_csi = (cameras_[0].type == CameraType::CSI);
-            GstElement* rtsp_sink = gst_element_factory_make("nvrtspoutsinkbin", "rtsp-sink");
-            GstElement* nvcvt     = gst_element_factory_make("nvvidconv",        "rtsp_nvcvt");
-            GstElement* caps_el   = gst_element_factory_make("capsfilter",       "rtsp_caps");
-            if (!rtsp_sink || !nvcvt || !caps_el)
-                throw std::runtime_error("Failed to create RTSP sink elements");
-
-            // nvrtspoutsinkbin requires NVMM NV12 — set explicit caps so nvvidconv
-            // negotiates the memory:NVMM feature rather than defaulting to system memory.
-            GstCaps* nvmm_caps = gst_caps_new_simple("video/x-raw",
-                "format", G_TYPE_STRING, "NV12",
-                "width",  G_TYPE_INT,    static_cast<gint>(cameras_[0].width),
-                "height", G_TYPE_INT,    static_cast<gint>(cameras_[0].height),
-                nullptr);
-            gst_caps_set_features(nvmm_caps, 0, gst_caps_features_new("memory:NVMM", nullptr));
-            g_object_set(caps_el, "caps", nvmm_caps, nullptr);
-            gst_caps_unref(nvmm_caps);
-
-            g_object_set(rtsp_sink,
-                "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
-                "codec",     1,
-                "sync",      FALSE,
-                nullptr);
-
-            if (is_csi) {
-                gst_bin_add_many(GST_BIN(pipeline_), nvcvt, caps_el, rtsp_sink, nullptr);
-                if (!gst_element_link_many(q_rtsp, nvcvt, caps_el, rtsp_sink, nullptr))
-                    throw std::runtime_error("Failed to link RTSP branch (CSI)");
-            } else {
-                GstElement* vcvt = gst_element_factory_make("videoconvert", "rtsp_vcvt");
-                if (!vcvt) throw std::runtime_error("Failed to create rtsp_vcvt");
-                gst_bin_add_many(GST_BIN(pipeline_), vcvt, nvcvt, caps_el, rtsp_sink, nullptr);
-                if (!gst_element_link_many(q_rtsp, vcvt, nvcvt, caps_el, rtsp_sink, nullptr))
-                    throw std::runtime_error("Failed to link RTSP branch (USB)");
-            }
-        } else {
+        {
             GstElement* drop = gst_element_factory_make("fakesink",
                 ("rtsp_drop_" + std::to_string(i)).c_str());
+            g_object_set(drop, "sync", FALSE, nullptr);
             gst_bin_add(GST_BIN(pipeline_), drop);
             gst_element_link(q_rtsp, drop);
         }
@@ -126,13 +91,19 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    GstElement* fakesink = gst_element_factory_make("fakesink", "sink");
-    if (!fakesink) throw std::runtime_error("Failed to create fakesink");
-    g_object_set(fakesink, "sync", FALSE, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), fakesink);
+    GstElement* nvcvt   = gst_element_factory_make("nvvideoconvert", "out_nvcvt");
+    GstElement* vcvt    = gst_element_factory_make("videoconvert",   "out_vcvt");
+    GstElement* jpegenc = gst_element_factory_make("jpegenc",        "out_jpeg");
+    GstElement* msink   = gst_element_factory_make("multifilesink",  "out_sink");
+    if (!nvcvt || !vcvt || !jpegenc || !msink)
+        throw std::runtime_error("Failed to create debug JPEG sink elements");
+    g_object_set(msink, "location", "/tmp/frame%05d.jpg", "max-files", 30, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline_), nvcvt, vcvt, jpegenc, msink, nullptr);
 
-    if (!gst_element_link(mux, infer) || !gst_element_link(infer, fakesink))
-        throw std::runtime_error("Failed to link mux→infer→fakesink");
+    if (!gst_element_link(mux, infer))
+        throw std::runtime_error("Failed to link mux→infer");
+    if (!gst_element_link_many(infer, nvcvt, vcvt, jpegenc, msink, nullptr))
+        throw std::runtime_error("Failed to link infer→jpeg→multifilesink");
 
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
     gst_pad_add_probe(infer_src, GST_PAD_PROBE_TYPE_BUFFER,
