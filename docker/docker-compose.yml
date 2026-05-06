@@ -9,6 +9,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0-host
       - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:/usr/local/cuda/lib64
+      - GST_DEBUG=2
     volumes:
       - ../models:/app/models
       - ../config:/app/config
