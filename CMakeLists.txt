@@ -132,7 +132,7 @@ target_link_libraries(mock_robot PRIVATE heimdall_comm libzmq cppzmq)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(GST gstreamer-1.0 gstreamer-rtsp-server-1.0 gstreamer-app-1.0)
+    pkg_check_modules(GST gstreamer-1.0)
 endif()
 
 # ---------------------------------------------------------------------------
