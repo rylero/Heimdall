@@ -79,19 +79,31 @@ void DeepStreamPipeline::build() {
 
         if (i == 0) {
             const bool is_csi = (cameras_[0].type == CameraType::CSI);
-            GstElement* conv_rtsp = gst_element_factory_make(
-                is_csi ? "nvvidconv" : "videoconvert", "rtsp_conv");
             GstElement* rtsp_sink = gst_element_factory_make("nvrtspoutsinkbin", "rtsp-sink");
-            if (!conv_rtsp || !rtsp_sink)
-                throw std::runtime_error("Failed to create RTSP branch elements");
+            if (!rtsp_sink)
+                throw std::runtime_error("Failed to create nvrtspoutsinkbin");
             g_object_set(rtsp_sink,
                 "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
                 "codec",     1,
                 "sync",      FALSE,
                 nullptr);
-            gst_bin_add_many(GST_BIN(pipeline_), conv_rtsp, rtsp_sink, nullptr);
-            if (!gst_element_link_many(q_rtsp, conv_rtsp, rtsp_sink, nullptr))
-                throw std::runtime_error("Failed to link RTSP branch");
+
+            if (is_csi) {
+                // CSI: already NVMM — single nvvidconv suffices
+                GstElement* conv_rtsp = gst_element_factory_make("nvvidconv", "rtsp_conv");
+                if (!conv_rtsp) throw std::runtime_error("Failed to create rtsp_conv");
+                gst_bin_add_many(GST_BIN(pipeline_), conv_rtsp, rtsp_sink, nullptr);
+                if (!gst_element_link_many(q_rtsp, conv_rtsp, rtsp_sink, nullptr))
+                    throw std::runtime_error("Failed to link RTSP branch (CSI)");
+            } else {
+                // USB: system-memory frames — videoconvert→nvvidconv uploads to NVMM
+                GstElement* vcvt  = gst_element_factory_make("videoconvert", "rtsp_vcvt");
+                GstElement* nvcvt = gst_element_factory_make("nvvidconv",    "rtsp_nvcvt");
+                if (!vcvt || !nvcvt) throw std::runtime_error("Failed to create rtsp converters");
+                gst_bin_add_many(GST_BIN(pipeline_), vcvt, nvcvt, rtsp_sink, nullptr);
+                if (!gst_element_link_many(q_rtsp, vcvt, nvcvt, rtsp_sink, nullptr))
+                    throw std::runtime_error("Failed to link RTSP branch (USB)");
+            }
         } else {
             GstElement* drop = gst_element_factory_make("fakesink",
                 ("rtsp_drop_" + std::to_string(i)).c_str());
