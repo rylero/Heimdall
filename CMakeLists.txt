@@ -132,7 +132,8 @@ target_link_libraries(mock_robot PRIVATE heimdall_comm libzmq cppzmq)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(GST gstreamer-1.0)
+    pkg_check_modules(GST      gstreamer-1.0)
+    pkg_check_modules(GST_RTSP gst-rtsp-server-1.0)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ find_library(NVDSGST_META_LIB  nvdsgst_meta  PATHS ${DS_LIB_DIR})
 # ---------------------------------------------------------------------------
 # Pipeline library (only built when GStreamer/DeepStream are available)
 # ---------------------------------------------------------------------------
-if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
+if(GST_FOUND AND GST_RTSP_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
     add_library(heimdall_pipeline
         src/pipeline/camera_source.cpp
         src/pipeline/probe.cpp
@@ -158,10 +159,12 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${DS_INCLUDES}
         ${GST_INCLUDE_DIRS}
+        ${GST_RTSP_INCLUDE_DIRS}
     )
     target_link_libraries(heimdall_pipeline
         PUBLIC
             ${GST_LIBRARIES}
+            ${GST_RTSP_LIBRARIES}
             ${NVDS_META_LIB}
             ${NVDSGST_META_LIB}
             heimdall_tracker
