@@ -102,10 +102,15 @@ void DeepStreamPipeline::build() {
 
     GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
+    // process-mode=1 (CPU) avoids EGL display dependency in headless containers;
+    // mode=0 (GPU/EGL) silently stalls when no display context is available
+    g_object_set(osd, "process-mode", 1, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    GstElement* conv_out = gst_element_factory_make("nvvideoconvert", "conv_out");
-    if (!conv_out) throw std::runtime_error("Failed to create nvvideoconvert");
+    // nvvidconv (not nvvideoconvert) reliably copies NVMM→system memory when
+    // downstream caps request video/x-raw without the NVMM memory feature
+    GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
+    if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
 
     // Try HW encoder first; fall back to x264enc when nvv4l2h264enc isn't available
