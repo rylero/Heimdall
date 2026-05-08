@@ -149,7 +149,7 @@ find_library(NVDSGST_META_LIB  nvdsgst_meta  PATHS ${DS_LIB_DIR})
 # ---------------------------------------------------------------------------
 # Pipeline library (only built when GStreamer/DeepStream are available)
 # ---------------------------------------------------------------------------
-if(GST_FOUND AND GST_RTSP_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
+if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
     add_library(heimdall_pipeline
         src/pipeline/camera_source.cpp
         src/pipeline/probe.cpp
@@ -159,16 +159,24 @@ if(GST_FOUND AND GST_RTSP_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${DS_INCLUDES}
         ${GST_INCLUDE_DIRS}
-        ${GST_RTSP_INCLUDE_DIRS}
     )
     target_link_libraries(heimdall_pipeline
         PUBLIC
             ${GST_LIBRARIES}
-            ${GST_RTSP_LIBRARIES}
             ${NVDS_META_LIB}
             ${NVDSGST_META_LIB}
             heimdall_tracker
     )
+
+    # gst-rtsp-server-1.0 — required by pipeline.cpp for GstRtspServer API
+    if(GST_RTSP_FOUND)
+        target_include_directories(heimdall_pipeline PUBLIC ${GST_RTSP_INCLUDE_DIRS})
+        target_link_libraries(heimdall_pipeline PUBLIC ${GST_RTSP_LIBRARIES})
+    else()
+        # pkg-config didn't find it; link by name (installed via libgstrtspserver-1.0-dev)
+        message(STATUS "gst-rtsp-server-1.0 not found via pkg-config — linking by name")
+        target_link_libraries(heimdall_pipeline PUBLIC gstrtspserver-1.0)
+    endif()
 
     # Main executable — full integrated app
     add_executable(heimdall
