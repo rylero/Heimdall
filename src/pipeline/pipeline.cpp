@@ -120,6 +120,7 @@ void DeepStreamPipeline::build() {
     g_object_set(rtsp_sink,
         "sync",      FALSE,
         "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
+        "bitrate",   static_cast<guint>(4000000),
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), rtsp_sink);
 
