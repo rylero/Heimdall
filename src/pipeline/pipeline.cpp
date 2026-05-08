@@ -1,4 +1,5 @@
 #include "pipeline.h"
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -46,44 +47,32 @@ void DeepStreamPipeline::build() {
         gst_element_set_name(src, ("src_" + std::to_string(i)).c_str());
         gst_bin_add(GST_BIN(pipeline_), src);
 
-        GstElement* tee       = gst_element_factory_make("tee",      ("tee_" + std::to_string(i)).c_str());
-        GstElement* q_infer   = gst_element_factory_make("queue",    ("qi_"  + std::to_string(i)).c_str());
-        GstElement* conv_nvmm = gst_element_factory_make("nvvidconv",("cnv_" + std::to_string(i)).c_str());
-        GstElement* q_rtsp    = gst_element_factory_make("queue",    ("qr_"  + std::to_string(i)).c_str());
-        if (!tee || !q_infer || !conv_nvmm || !q_rtsp)
-            throw std::runtime_error("Failed to create tee/queue/nvvidconv");
-        g_object_set(q_infer, "leaky", 2, "max-size-buffers", 2, nullptr);
-        g_object_set(q_rtsp,  "leaky", 2, "max-size-buffers", 2, nullptr);
-        gst_bin_add_many(GST_BIN(pipeline_), tee, q_infer, conv_nvmm, q_rtsp, nullptr);
-
         GstPad* src_pad  = gst_element_get_static_pad(src, "src");
-        GstPad* tee_sink = gst_element_get_static_pad(tee, "sink");
-        if (gst_pad_link(src_pad, tee_sink) != GST_PAD_LINK_OK)
-            throw std::runtime_error("Failed to link src to tee");
-        gst_object_unref(src_pad); gst_object_unref(tee_sink);
-
-        GstPad* t0 = gst_element_get_request_pad(tee, "src_%u");
-        GstPad* qi = gst_element_get_static_pad(q_infer, "sink");
-        gst_pad_link(t0, qi); gst_object_unref(t0); gst_object_unref(qi);
-        if (!gst_element_link(q_infer, conv_nvmm))
-            throw std::runtime_error("Failed to link q_infer to nvvidconv");
-        GstPad* conv_src = gst_element_get_static_pad(conv_nvmm, "src");
         GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
-        if (gst_pad_link(conv_src, mux_sink) != GST_PAD_LINK_OK)
-            throw std::runtime_error("Failed to link nvvidconv to mux");
-        gst_object_unref(conv_src); gst_object_unref(mux_sink);
 
-        GstPad* t1 = gst_element_get_request_pad(tee, "src_%u");
-        GstPad* qr = gst_element_get_static_pad(q_rtsp, "sink");
-        gst_pad_link(t1, qr); gst_object_unref(t1); gst_object_unref(qr);
+        if (cameras_[i].type == CameraType::USB) {
+            // USB sources output CPU memory after jpegdec; nvvidconv converts to NVMM
+            GstElement* conv = gst_element_factory_make("nvvidconv",
+                ("cnv_" + std::to_string(i)).c_str());
+            if (!conv) throw std::runtime_error("Failed to create nvvidconv");
+            gst_bin_add(GST_BIN(pipeline_), conv);
 
-        {
-            GstElement* drop = gst_element_factory_make("fakesink",
-                ("rtsp_drop_" + std::to_string(i)).c_str());
-            g_object_set(drop, "sync", FALSE, nullptr);
-            gst_bin_add(GST_BIN(pipeline_), drop);
-            gst_element_link(q_rtsp, drop);
+            GstPad* conv_sink = gst_element_get_static_pad(conv, "sink");
+            if (gst_pad_link(src_pad, conv_sink) != GST_PAD_LINK_OK)
+                throw std::runtime_error("Failed to link src to nvvidconv");
+            gst_object_unref(conv_sink);
+
+            GstPad* conv_src = gst_element_get_static_pad(conv, "src");
+            if (gst_pad_link(conv_src, mux_sink) != GST_PAD_LINK_OK)
+                throw std::runtime_error("Failed to link nvvidconv to mux");
+            gst_object_unref(conv_src);
+        } else {
+            // CSI sources already output NVMM; link directly to mux
+            if (gst_pad_link(src_pad, mux_sink) != GST_PAD_LINK_OK)
+                throw std::runtime_error("Failed to link src to mux");
         }
+        gst_object_unref(src_pad);
+        gst_object_unref(mux_sink);
     }
 
     GstElement* infer = gst_element_factory_make("nvinfer", "infer");
@@ -91,20 +80,63 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    GstElement* outsink = gst_element_factory_make("fakesink", "out_sink");
-    if (!outsink) throw std::runtime_error("Failed to create fakesink");
-    g_object_set(outsink, "sync", FALSE, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), outsink);
-
-    if (!gst_element_link(mux, infer))
-        throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, outsink))
-        throw std::runtime_error("Failed to link infer→fakesink");
-
+    // Probe fires before tiling so frame->source_id still maps to original camera index
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
     gst_pad_add_probe(infer_src, GST_PAD_PROBE_TYPE_BUFFER,
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
+
+    guint tiler_rows = static_cast<guint>(std::ceil(std::sqrt(cameras_.size())));
+    guint tiler_cols = static_cast<guint>(
+        std::ceil(static_cast<double>(cameras_.size()) / tiler_rows));
+    GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
+    if (!tiler) throw std::runtime_error("Failed to create nvmultistreamtiler");
+    g_object_set(tiler,
+        "rows",    tiler_rows,
+        "columns", tiler_cols,
+        "width",   cameras_[0].width  * tiler_cols,
+        "height",  cameras_[0].height * tiler_rows,
+        nullptr);
+    gst_bin_add(GST_BIN(pipeline_), tiler);
+
+    GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
+    if (!osd) throw std::runtime_error("Failed to create nvdsosd");
+    gst_bin_add(GST_BIN(pipeline_), osd);
+
+    GstElement* conv_out = gst_element_factory_make("nvvideoconvert", "conv_out");
+    if (!conv_out) throw std::runtime_error("Failed to create nvvideoconvert");
+    gst_bin_add(GST_BIN(pipeline_), conv_out);
+
+    // Force NVMM I420 to satisfy nvrtspoutsinkbin memory-type negotiation
+    GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
+    if (!caps_out) throw std::runtime_error("Failed to create capsfilter");
+    GstCaps* enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=I420");
+    g_object_set(caps_out, "caps", enc_caps, nullptr);
+    gst_caps_unref(enc_caps);
+    gst_bin_add(GST_BIN(pipeline_), caps_out);
+
+    GstElement* rtsp_sink = gst_element_factory_make("nvrtspoutsinkbin", "rtsp_sink");
+    if (!rtsp_sink) throw std::runtime_error("Failed to create nvrtspoutsinkbin");
+    g_object_set(rtsp_sink,
+        "sync",      FALSE,
+        "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
+        nullptr);
+    gst_bin_add(GST_BIN(pipeline_), rtsp_sink);
+
+    if (!gst_element_link(mux, infer))
+        throw std::runtime_error("Failed to link mux→infer");
+    if (!gst_element_link(infer, tiler))
+        throw std::runtime_error("Failed to link infer→tiler");
+    if (!gst_element_link(tiler, osd))
+        throw std::runtime_error("Failed to link tiler→osd");
+    if (!gst_element_link(osd, conv_out))
+        throw std::runtime_error("Failed to link osd→conv_out");
+    if (!gst_element_link(conv_out, caps_out))
+        throw std::runtime_error("Failed to link conv_out→caps_out");
+    if (!gst_element_link(caps_out, rtsp_sink))
+        throw std::runtime_error("Failed to link caps_out→rtsp_sink");
+
+    GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
     GstBus* bus = gst_element_get_bus(pipeline_);
     gst_bus_add_watch(bus, bus_cb, this);

@@ -15,8 +15,8 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1"
                << " ! jpegdec";
-            // nvvidconv (NVMM conversion) added in pipeline.cpp after a tee so the
-            // RTSP branch can split off in system memory before NVMM conversion.
+            // nvvidconv for NVMM conversion is added in pipeline.cpp for USB sources only;
+            // CSI sources (nvarguscamerasrc) already output NVMM and link directly to mux.
             break;
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
