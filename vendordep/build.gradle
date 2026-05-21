@@ -1,0 +1,50 @@
+plugins {
+    id 'java-library'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'maven-publish'
+}
+
+group   = 'com.heimdall'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JeroMQ — pure Java ZMQ; no native libs needed on RoboRIO.
+    implementation 'org.zeromq:jeromq:0.5.4'
+}
+
+// Fat JAR: bundle JeroMQ so the vendordep is a single self-contained artifact.
+shadowJar {
+    archiveClassifier = ''   // replaces the default jar
+    mergeServiceFiles()
+}
+
+// Wire 'build' to produce the fat JAR.
+build.dependsOn shadowJar
+
+// Publish fat JAR to the local maven/ directory inside this repo.
+// Run: ./gradlew publishToMavenLocal  -- OR --  ./gradlew publish
+publishing {
+    publications {
+        shadow(MavenPublication) { publication ->
+            project.shadow.component(publication)
+            groupId    = 'com.heimdall'
+            artifactId = 'heimdall-lib'
+            version    = project.version
+        }
+    }
+    repositories {
+        maven {
+            name = 'localRepo'
+            url  = uri("${rootDir}/maven")
+        }
+    }
+}

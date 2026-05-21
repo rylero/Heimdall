@@ -1,0 +1,20 @@
+{
+  "fileName": "HeimdallVendorDep.json",
+  "name": "Heimdall Vision",
+  "version": "1.0.0",
+  "frcYear": 2026,
+  "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "mavenUrls": [
+    "file:///REPLACE_WITH_ABSOLUTE_PATH_TO/Heimdall/vendordep/maven"
+  ],
+  "jsonUrl": "",
+  "javaDependencies": [
+    {
+      "groupId": "com.heimdall",
+      "artifactId": "heimdall-lib",
+      "version": "1.0.0"
+    }
+  ],
+  "jniDependencies": [],
+  "cppDependencies": []
+}
