@@ -164,6 +164,17 @@ void DeepStreamPipeline::build() {
     if (!gst_element_link(rtp_pay, udp_out))
         throw std::runtime_error("Failed to link rtp_pay→udp_out");
 
+    // Diagnostic probes — track where frames stop flowing between major stages.
+    // [stage] tiler frame N  → infer is working, tiler is receiving
+    // [stage] osd frame N    → tiler is outputting, osd is receiving
+    // [stage] conv_out frame N → osd is outputting, conv_out is receiving
+    // [stage] encoder frame N  → encoder is receiving (caps negotiation succeeded)
+    // If a stage probe stops firing, the element BEFORE it is the bottleneck.
+    add_stage_probe(tiler,    "tiler");
+    add_stage_probe(osd,      "osd");
+    add_stage_probe(conv_out, "conv_out");
+    add_stage_probe(encoder,  "encoder");
+
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
     GstBus* bus = gst_element_get_bus(pipeline_);
@@ -186,6 +197,26 @@ void DeepStreamPipeline::build() {
     rtsp_source_id_ = gst_rtsp_server_attach(rtsp_server_, nullptr);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test\n", RTSP_SERV_PORT);
+}
+
+GstPadProbeReturn DeepStreamPipeline::stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer data) {
+    auto* sc = static_cast<StageCounter*>(data);
+    ++sc->count;
+    if (sc->count <= 10 || sc->count % 100 == 0)
+        g_printerr("[stage] %s frame %d\n", sc->name, sc->count);
+    return GST_PAD_PROBE_OK;
+}
+
+void DeepStreamPipeline::add_stage_probe(GstElement* element, const char* stage_name) {
+    stage_counters_.push_back({stage_name, 0});
+    StageCounter* sc = &stage_counters_.back();
+    GstPad* src_pad = gst_element_get_static_pad(element, "src");
+    if (!src_pad) {
+        g_printerr("[stage] no src pad on %s — skipping probe\n", stage_name);
+        return;
+    }
+    gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER, stage_probe_cb, sc, nullptr);
+    gst_object_unref(src_pad);
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {

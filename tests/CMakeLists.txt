@@ -1,7 +1,8 @@
-# Existing pipeline tests (require GStreamer headers — Jetson/Docker only)
+# Pipeline tests — require GStreamer/DeepStream (Jetson/Docker only)
 if(TARGET heimdall_pipeline)
     add_executable(heimdall_tests
         test_camera_source.cpp
+        test_pipeline_chain.cpp
     )
     target_link_libraries(heimdall_tests
         heimdall_pipeline

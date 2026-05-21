@@ -29,7 +29,8 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           src/app/heimdall_app.cpp src/main.cpp \
           src/models/bbox_parser/rfdetr_parser.cpp \
           tools/mock_robot.cpp \
-          tests/test_camera_source.cpp tests/test_kalman.cpp tests/test_pose_estimator.cpp \
+          tests/test_camera_source.cpp tests/test_pipeline_chain.cpp \
+          tests/test_kalman.cpp tests/test_pose_estimator.cpp \
           tests/test_comm_layer.cpp tests/test_jpda.cpp tests/test_tracker.cpp
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
