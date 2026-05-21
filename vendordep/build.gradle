@@ -37,7 +37,7 @@ publishing {
         shadow(MavenPublication) { publication ->
             project.shadow.component(publication)
             groupId    = 'com.heimdall'
-            artifactId = 'heimdall-lib'
+            artifactId = 'HeimdallLib-java'
             version    = project.version
         }
     }
