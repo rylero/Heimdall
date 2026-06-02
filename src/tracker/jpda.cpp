@@ -35,8 +35,10 @@ std::vector<int> jpda_update(
     std::vector<std::vector<float>> L(n, std::vector<float>(m, 0.f));
     for (int i = 0; i < n; ++i) {
         const auto& P   = tracks[i].cov;
-        const float s00 = P[0*4+0] + MEAS_NOISE_R;
-        const float s11 = P[1*4+1] + MEAS_NOISE_R;
+        const int   N   = (tracks[i].model == FilterModel::CONSTANT_POSITION)     ? 2 :
+                          (tracks[i].model == FilterModel::CONSTANT_ACCELERATION)  ? 6 : 4;
+        const float s00 = P[0*N+0] + MEAS_NOISE_R;
+        const float s11 = P[1*N+1] + MEAS_NOISE_R;
         const float norm = 1.f / (TWO_PI * std::sqrt(s00 * s11));
 
         for (int j = 0; j < m; ++j) {
