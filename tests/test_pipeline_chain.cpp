@@ -200,7 +200,7 @@ TEST_CASE("osd_chain_flows: nvdsosd CPU mode does not stall pipeline", "[pipelin
 
     // Report the actual error clearly to help diagnose process-mode issues
     if (!err.empty())
-        FAIL("osd→conv→encoder chain error (try process-mode=0 in pipeline.cpp): " << err);
+        FAIL("osd→conv→encoder chain error (try process-mode=0/CPU in pipeline.cpp): " << err);
 
     REQUIRE(enc_frame_count.load() > 0);
 }

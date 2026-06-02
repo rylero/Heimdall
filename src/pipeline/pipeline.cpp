@@ -49,7 +49,9 @@ void DeepStreamPipeline::build() {
         gst_bin_add(GST_BIN(pipeline_), src);
 
         GstPad* src_pad  = gst_element_get_static_pad(src, "src");
+        if (!src_pad) throw std::runtime_error("Source bin has no 'src' ghost pad for camera " + std::to_string(i));
         GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
+        if (!mux_sink) throw std::runtime_error("Failed to get mux sink pad for camera " + std::to_string(i));
 
         if (cameras_[i].type == CameraType::USB) {
             // USB sources output CPU memory after jpegdec; nvvidconv converts to NVMM
@@ -102,8 +104,8 @@ void DeepStreamPipeline::build() {
 
     GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
-    // process-mode=1 (CPU) avoids EGL display dependency in headless containers;
-    // mode=0 (GPU/EGL) silently stalls when no display context is available
+    // process-mode=1 (GPU/CUDA) works headless — no EGL/display context needed.
+    // process-mode=0 (CPU) also works headless but is slower; mode=2 (HW/VIC) is Jetson-only.
     g_object_set(osd, "process-mode", 1, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
@@ -118,7 +120,7 @@ void DeepStreamPipeline::build() {
     GstCaps*    enc_caps = nullptr;
     if (encoder) {
         g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
-        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=I420");
+        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
     } else {
         g_printerr("[pipeline] nvv4l2h264enc unavailable, falling back to x264enc\n");
         encoder = gst_element_factory_make("x264enc", "encoder");
@@ -144,7 +146,7 @@ void DeepStreamPipeline::build() {
     // Encoded RTP sent to loopback; the RTSP server below re-serves it to clients
     GstElement* udp_out = gst_element_factory_make("udpsink", "udp_out");
     if (!udp_out) throw std::runtime_error("Failed to create udpsink");
-    g_object_set(udp_out, "host", "127.0.0.1", "port", RTP_PORT, "sync", FALSE, nullptr);
+    g_object_set(udp_out, "host", "127.0.0.1", "port", RTP_PORT, "sync", FALSE, "async", FALSE, nullptr);
     gst_bin_add(GST_BIN(pipeline_), udp_out);
 
     if (!gst_element_link(mux, infer))
@@ -193,6 +195,7 @@ void DeepStreamPipeline::build() {
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
     gst_rtsp_mount_points_add_factory(mounts, "/ds-test", factory);
+    gst_object_unref(factory);
     gst_object_unref(mounts);
     rtsp_source_id_ = gst_rtsp_server_attach(rtsp_server_, nullptr);
 
