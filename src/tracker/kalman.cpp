@@ -107,11 +107,89 @@ void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_we
             P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
 }
 
-// ─── Constant-Acceleration (CA) — stubs replaced by real impl in a later task ─
+// ─── Constant-Acceleration (CA) ──────────────────────────────────────────────
 
-void kalman_predict_ca(Track& /*track*/, double /*dt*/) {}
+void kalman_predict_ca(Track& track, double dt_d) {
+    constexpr int N = 6;
+    const float dt  = static_cast<float>(dt_d);
+    const float dt2 = dt * dt;
+    const float hdt2 = 0.5f * dt2;
+    auto& x = track.state;
+    auto& P = track.cov;
 
-void kalman_update_ca(Track& /*track*/, float /*innov_x*/, float /*innov_y*/, float /*w*/) {}
+    // State: x' = F*x
+    x[0] += x[2] * dt + x[4] * hdt2;
+    x[1] += x[3] * dt + x[5] * hdt2;
+    x[2] += x[4] * dt;
+    x[3] += x[5] * dt;
+    // x[4], x[5] (ax, ay) unchanged
+
+    // P = F*P*F' + Q
+    // Step 1: FP = F*P
+    std::array<float, N*N> FP;
+    std::copy_n(P.begin(), N*N, FP.begin());
+    for (int j = 0; j < N; ++j) {
+        FP[0*N+j] = P[0*N+j] + dt * P[2*N+j] + hdt2 * P[4*N+j];
+        FP[1*N+j] = P[1*N+j] + dt * P[3*N+j] + hdt2 * P[5*N+j];
+        FP[2*N+j] = P[2*N+j] + dt * P[4*N+j];
+        FP[3*N+j] = P[3*N+j] + dt * P[5*N+j];
+        // rows 4, 5 already copied (identity rows of F)
+    }
+    // Step 2: P = FP*F'
+    for (int i = 0; i < N; ++i) {
+        P[i*N+0] = FP[i*N+0] + dt * FP[i*N+2] + hdt2 * FP[i*N+4];
+        P[i*N+1] = FP[i*N+1] + dt * FP[i*N+3] + hdt2 * FP[i*N+5];
+        P[i*N+2] = FP[i*N+2] + dt * FP[i*N+4];
+        P[i*N+3] = FP[i*N+3] + dt * FP[i*N+5];
+        P[i*N+4] = FP[i*N+4];
+        P[i*N+5] = FP[i*N+5];
+    }
+    // Step 3: P += Q (discrete white-noise-jerk, x/y decoupled)
+    const float q   = PROCESS_NOISE_Q;
+    const float dt3 = dt2 * dt, dt4 = dt3 * dt, dt5 = dt4 * dt;
+    P[0*N+0] += q * dt5 / 20.f;
+    P[1*N+1] += q * dt5 / 20.f;
+    P[0*N+2] += q * dt4 / 8.f;   P[2*N+0] += q * dt4 / 8.f;
+    P[1*N+3] += q * dt4 / 8.f;   P[3*N+1] += q * dt4 / 8.f;
+    P[0*N+4] += q * dt3 / 6.f;   P[4*N+0] += q * dt3 / 6.f;
+    P[1*N+5] += q * dt3 / 6.f;   P[5*N+1] += q * dt3 / 6.f;
+    P[2*N+2] += q * dt3 / 3.f;
+    P[3*N+3] += q * dt3 / 3.f;
+    P[2*N+4] += q * dt2 / 2.f;   P[4*N+2] += q * dt2 / 2.f;
+    P[3*N+5] += q * dt2 / 2.f;   P[5*N+3] += q * dt2 / 2.f;
+    P[4*N+4] += q * dt;
+    P[5*N+5] += q * dt;
+}
+
+void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight) {
+    if (total_weight <= 0.f) return;
+    constexpr int N = 6;
+    auto& x = track.state;
+    auto& P = track.cov;
+
+    const float R   = MEAS_NOISE_R;
+    const float s00 = P[0*N+0] + R,  s01 = P[0*N+1];
+    const float s10 = P[1*N+0],       s11 = P[1*N+1] + R;
+    const float det = s00 * s11 - s01 * s10;
+
+    const float si00 =  s11 / det,  si01 = -s01 / det;
+    const float si10 = -s10 / det,  si11 =  s00 / det;
+
+    float K[N][2];
+    for (int i = 0; i < N; ++i) {
+        K[i][0] = P[i*N+0] * si00 + P[i*N+1] * si10;
+        K[i][1] = P[i*N+0] * si01 + P[i*N+1] * si11;
+    }
+
+    for (int i = 0; i < N; ++i)
+        x[i] += K[i][0] * innov_x + K[i][1] * innov_y;
+
+    float p0[N], p1[N];
+    for (int j = 0; j < N; ++j) { p0[j] = P[0*N+j]; p1[j] = P[1*N+j]; }
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
+}
 
 // ─── Dispatchers ─────────────────────────────────────────────────────────────
 
