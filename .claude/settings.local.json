@@ -42,7 +42,10 @@
       "WebFetch(domain:catalog.ngc.nvidia.com)",
       "WebFetch(domain:docs.nvidia.com)",
       "WebSearch",
-      "Bash(docker system df *)"
+      "Bash(docker system df *)",
+      "Bash(cmd.exe *)",
+      "Skill(update-config)",
+      "PowerShell(ls *)"
     ]
   }
 }
