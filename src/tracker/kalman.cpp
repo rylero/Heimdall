@@ -2,11 +2,47 @@
 #include <algorithm>
 #include <cmath>
 
-// ─── Constant-Position (CP) — stubs replaced by real impl in a later task ────
+// ─── Constant-Position (CP) ───────────────────────────────────────────────────
 
-void kalman_predict_cp(Track& /*track*/, double /*dt*/) {}
+void kalman_predict_cp(Track& track, double dt_d) {
+    constexpr int N = 2;
+    const float dt = static_cast<float>(dt_d);
+    auto& P = track.cov;
+    // F = I2 — position unchanged (random walk); P = P + q*dt*I2
+    const float q = PROCESS_NOISE_Q;
+    P[0*N+0] += q * dt;
+    P[1*N+1] += q * dt;
+}
 
-void kalman_update_cp(Track& /*track*/, float /*innov_x*/, float /*innov_y*/, float /*w*/) {}
+void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight) {
+    if (total_weight <= 0.f) return;
+    constexpr int N = 2;
+    auto& x = track.state;
+    auto& P = track.cov;
+
+    const float R   = MEAS_NOISE_R;
+    const float s00 = P[0*N+0] + R,  s01 = P[0*N+1];
+    const float s10 = P[1*N+0],       s11 = P[1*N+1] + R;
+    const float det = s00 * s11 - s01 * s10;
+
+    const float si00 =  s11 / det,  si01 = -s01 / det;
+    const float si10 = -s10 / det,  si11 =  s00 / det;
+
+    float K[N][2];
+    for (int i = 0; i < N; ++i) {
+        K[i][0] = P[i*N+0] * si00 + P[i*N+1] * si10;
+        K[i][1] = P[i*N+0] * si01 + P[i*N+1] * si11;
+    }
+
+    for (int i = 0; i < N; ++i)
+        x[i] += K[i][0] * innov_x + K[i][1] * innov_y;
+
+    float p0[N], p1[N];
+    for (int j = 0; j < N; ++j) { p0[j] = P[0*N+j]; p1[j] = P[1*N+j]; }
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
+}
 
 // ─── Constant-Velocity (CV) — renamed from original kalman_predict/update ───
 
