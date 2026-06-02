@@ -19,21 +19,27 @@ TEST_CASE("empty tracks -- all detections returned as unassociated", "[jpda]") {
 }
 
 TEST_CASE("empty detections -- all tracks get frames_missed incremented", "[jpda]") {
-    std::vector<Track> tracks = { make_track(1, 0, 0.f, 0.f, 1.f, 0.0) };
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
     jpda_update(tracks, {}, 0.02, default_cfg());
     REQUIRE(tracks[0].frames_missed == 1);
     REQUIRE(tracks[0].frames_seen   == 1);
 }
 
 TEST_CASE("nearby detection is associated -- not returned as unassociated", "[jpda]") {
-    std::vector<Track> tracks = { make_track(1, 0, 0.f, 0.f, 1.f, 0.0) };
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
     std::vector<FieldDetection> dets = {{0, 0.1f, 0.1f, 0.9f}};
     auto unassoc = jpda_update(tracks, dets, 0.02, default_cfg());
     REQUIRE(unassoc.empty());
 }
 
 TEST_CASE("far detection is unassociated -- outside gate", "[jpda]") {
-    std::vector<Track> tracks = { make_track(1, 0, 0.f, 0.f, 1.f, 0.0) };
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
     std::vector<FieldDetection> dets = {{0, 5.f, 5.f, 0.9f}};
     auto unassoc = jpda_update(tracks, dets, 0.02, default_cfg());
     REQUIRE(unassoc.size() == 1);
@@ -41,7 +47,9 @@ TEST_CASE("far detection is unassociated -- outside gate", "[jpda]") {
 }
 
 TEST_CASE("associated detection updates track state toward measurement", "[jpda]") {
-    std::vector<Track> tracks = { make_track(1, 0, 0.f, 0.f, 1.f, 0.0) };
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
     float meas_x = 0.5f, meas_y = 0.3f;
     std::vector<FieldDetection> dets = {{0, meas_x, meas_y, 0.9f}};
     float x_before = tracks[0].state[0];
@@ -50,7 +58,9 @@ TEST_CASE("associated detection updates track state toward measurement", "[jpda]
 }
 
 TEST_CASE("associated detection increments frames_seen, resets frames_missed", "[jpda]") {
-    std::vector<Track> tracks = { make_track(1, 0, 0.f, 0.f, 1.f, 0.0) };
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
     tracks[0].frames_missed = 2;
     std::vector<FieldDetection> dets = {{0, 0.1f, 0.f, 0.9f}};
     jpda_update(tracks, dets, 0.02, default_cfg());
@@ -60,8 +70,8 @@ TEST_CASE("associated detection increments frames_seen, resets frames_missed", "
 
 TEST_CASE("two well-separated tracks -- each associated with its own detection", "[jpda]") {
     std::vector<Track> tracks = {
-        make_track(1, 0,  0.f,  0.f, 1.f, 0.0),
-        make_track(2, 0, 10.f, 10.f, 1.f, 0.0),
+        make_track(1, 0,  0.f,  0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY),
+        make_track(2, 0, 10.f, 10.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY),
     };
     std::vector<FieldDetection> dets = {
         {0, 0.1f,  0.1f,  0.9f},
