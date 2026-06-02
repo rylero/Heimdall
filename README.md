@@ -86,6 +86,35 @@ When multiple cameras observe the same object simultaneously, positions are fuse
 - **Connection loss:** Publishes error state on ZeroMQ disconnect
 - **Heartbeat:** Jetson sends periodic heartbeat so robot can detect Heimdall is alive
 
+### Robot Integration (Java)
+
+A WPILib vendordep JAR ships with the repo under `vendordep/`. Install by copying `vendordep/HeimdallVendorDep.json` into your robot project's `vendordeps/` folder; Gradle resolves the JAR from the local maven repo at `vendordep/maven/`.
+
+```java
+// In your drive/vision subsystem:
+private final HeimdallClient heimdall = new HeimdallClient("10.42.0.2");
+
+@Override
+public void periodic() {
+    heimdall.sendPose(odometry.getX(), odometry.getY(),
+                      odometry.getRotation().getRadians());
+    DetectionFrame frame = heimdall.getLatestFrame();
+    if (frame != null && frame.isHealthy()) {
+        for (TrackedObject obj : frame.getObjects()) { ... }
+    }
+}
+```
+
+| Method | Description |
+|---|---|
+| `sendPose(x, y, headingRad)` | Push field-relative robot pose to Jetson (~50 Hz) |
+| `getLatestFrame()` | Latest detection frame, or `null` before first receive |
+| `isHealthy()` | `true` when frames arrive within 500 ms and pipeline is healthy |
+| `getTimeSinceLastFrameSecs()` | Staleness check |
+| `close()` | Shuts down background IO thread; implement `AutoCloseable` |
+
+Ports: robot→Jetson on **5555** (PUSH/PULL), Jetson→robot on **5556** (PUSH/PULL).
+
 ---
 
 ## Web Interface
