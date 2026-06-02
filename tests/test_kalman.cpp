@@ -67,3 +67,56 @@ TEST_CASE("make_track initializes at given position with zero velocity", "[kalma
     REQUIRE(t.frames_seen   == 1);
     REQUIRE(t.frames_missed == 0);
 }
+
+// ─── Constant-Position (CP) tests ─────────────────────────────────────────
+
+TEST_CASE("CP: predict does not change position", "[kalman][cp]") {
+    Track t = make_track(1, 0, 3.f, 4.f, 1.f, 0.0, FilterModel::CONSTANT_POSITION);
+    kalman_predict(t, 0.1);
+    REQUIRE_THAT(t.state[0], WithinAbs(3.f, 1e-5f));
+    REQUIRE_THAT(t.state[1], WithinAbs(4.f, 1e-5f));
+}
+
+TEST_CASE("CP: predict increases position variance", "[kalman][cp]") {
+    Track t = make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_POSITION);
+    float p00_before = t.cov[0*2+0];
+    kalman_predict(t, 0.02);
+    REQUIRE(t.cov[0*2+0] > p00_before);
+}
+
+TEST_CASE("CP: update reduces position variance", "[kalman][cp]") {
+    Track t = make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_POSITION);
+    float p00_before = t.cov[0*2+0];
+    kalman_update_combined(t, 1.f, 1.f, 1.f);
+    REQUIRE(t.cov[0*2+0] < p00_before);
+}
+
+TEST_CASE("CP: update pulls state toward measurement", "[kalman][cp]") {
+    Track t = make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_POSITION);
+    t.cov[0*2+0] = 100.f;
+    t.cov[1*2+1] = 100.f;
+    kalman_update_combined(t, 5.f, 3.f, 1.f);
+    REQUIRE_THAT(t.state[0], WithinAbs(5.f, 0.1f));
+    REQUIRE_THAT(t.state[1], WithinAbs(3.f, 0.1f));
+}
+
+TEST_CASE("CP: update with weight=0 is a no-op", "[kalman][cp]") {
+    Track t = make_track(1, 0, 2.f, 3.f, 1.f, 0.0, FilterModel::CONSTANT_POSITION);
+    auto state_before = t.state;
+    auto cov_before   = t.cov;
+    kalman_update_combined(t, 100.f, 100.f, 0.f);
+    REQUIRE(t.state == state_before);
+    REQUIRE(t.cov   == cov_before);
+}
+
+TEST_CASE("CP: make_track initializes with zero velocity slots", "[kalman][cp]") {
+    Track t = make_track(1, 0, 2.f, -1.f, 0.9f, 0.5, FilterModel::CONSTANT_POSITION);
+    REQUIRE(t.model == FilterModel::CONSTANT_POSITION);
+    REQUIRE_THAT(t.state[0], WithinAbs(2.f,  1e-6f));
+    REQUIRE_THAT(t.state[1], WithinAbs(-1.f, 1e-6f));
+    REQUIRE_THAT(t.state[2], WithinAbs(0.f,  1e-6f));  // unused vx
+    REQUIRE_THAT(t.state[3], WithinAbs(0.f,  1e-6f));  // unused vy
+    REQUIRE_THAT(t.cov[0*2+0], WithinAbs(10.f, 1e-5f));
+    REQUIRE_THAT(t.cov[1*2+1], WithinAbs(10.f, 1e-5f));
+    REQUIRE_THAT(t.cov[1*2+0], WithinAbs(0.f,  1e-5f));  // off-diagonal zero
+}
