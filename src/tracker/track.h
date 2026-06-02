@@ -4,19 +4,26 @@
 
 enum class TrackStatus { TENTATIVE, CONFIRMED };
 
+enum class FilterModel {
+    CONSTANT_POSITION,      // state = [x, y],                N=2
+    CONSTANT_VELOCITY,      // state = [x, y, vx, vy],        N=4
+    CONSTANT_ACCELERATION,  // state = [x, y, vx, vy, ax, ay] N=6
+};
+
 // Internal tracker state. Not exposed to callers — use TrackEvent / TrackedObject instead.
 struct Track {
-    uint32_t   id;
-    int        class_id;
-    float      confidence;
+    uint32_t    id;
+    int         class_id;
+    float       confidence;
+    FilterModel model;
 
-    // Kalman state: [x, y, vx, vy]  (meters, m/s, field-relative)
-    std::array<float, 4>  state;
-    // Covariance: 4x4 row-major
-    std::array<float, 16> cov;
+    // state[0..N-1] active; rest zero-initialised. N = 2, 4, or 6 per model.
+    std::array<float, 6>  state;
+    // cov uses row-major stride N×N occupying first N*N elements; rest zero.
+    std::array<float, 36> cov;
 
     double      last_update_s;
-    int         frames_seen;    // total frames with associated detection (used for TENTATIVE->CONFIRMED promotion)
-    int         frames_missed;  // consecutive frames with no associated detection
+    int         frames_seen;
+    int         frames_missed;
     TrackStatus status;
 };
