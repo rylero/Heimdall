@@ -15,9 +15,15 @@ public:
         std::string raw_output_bind_addr;  // Jetson PUB  — raw pixel detections (empty = disabled)
     };
 
+    // Received robot pose tagged with Jetson CLOCK_MONOTONIC reception time.
+    struct TimestampedPose {
+        RobotPose pose;
+        uint64_t  jetson_recv_ns; // CLOCK_MONOTONIC ns when this pose arrived on the Jetson
+    };
+
     explicit CommLayer(Config config);
 
-    std::optional<RobotPose> try_recv_pose();
+    std::optional<TimestampedPose> try_recv_pose();
 
     void send_frame(const std::vector<TrackEvent>& events,
                     uint64_t timestamp_ns,

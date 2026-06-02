@@ -1,5 +1,6 @@
 #include "comm_layer.h"
 #include "heimdall.pb.h"
+#include <time.h>
 
 CommLayer::CommLayer(Config config)
     : ctx_(1),
@@ -17,7 +18,7 @@ CommLayer::CommLayer(Config config)
     }
 }
 
-std::optional<RobotPose> CommLayer::try_recv_pose() {
+std::optional<CommLayer::TimestampedPose> CommLayer::try_recv_pose() {
     zmq::message_t msg;
     const auto result = pull_sock_.recv(msg, zmq::recv_flags::dontwait);
     if (!result) return std::nullopt;
@@ -26,7 +27,15 @@ std::optional<RobotPose> CommLayer::try_recv_pose() {
     if (!proto.ParseFromArray(msg.data(), static_cast<int>(msg.size())))
         return std::nullopt;
 
-    return RobotPose{proto.x(), proto.y(), proto.heading()};
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    const uint64_t recv_ns = static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL
+                           + static_cast<uint64_t>(ts.tv_nsec);
+
+    return TimestampedPose{
+        RobotPose{proto.x(), proto.y(), proto.heading(), proto.timestamp_ns()},
+        recv_ns
+    };
 }
 
 void CommLayer::send_frame(const std::vector<TrackEvent>& events,

@@ -17,22 +17,31 @@ GstPadProbeReturn detection_probe_cb(GstPad*, GstPadProbeInfo* info, gpointer us
     NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
     if (!batch) return GST_PAD_PROBE_OK;
 
+    // Convert buf_pts (pipeline running time) → CLOCK_MONOTONIC absolute time.
+    // base_time is set when the pipeline transitions to PLAYING and stays constant.
+    GstElement* parent = gst_pad_get_parent_element(pad);
+    const GstClockTime base_time = parent ? gst_element_get_base_time(parent) : 0;
+    if (parent) gst_object_unref(parent);
+
     std::vector<Detection> detections;
 
     for (auto* lf = batch->frame_meta_list; lf; lf = lf->next) {
         auto* frame = static_cast<NvDsFrameMeta*>(lf->data);
+        const uint64_t capture_ns = static_cast<uint64_t>(frame->buf_pts)
+                                  + static_cast<uint64_t>(base_time);
         for (auto* lo = frame->obj_meta_list; lo; lo = lo->next) {
             auto* obj = static_cast<NvDsObjectMeta*>(lo->data);
             const auto& r = obj->rect_params;
             detections.push_back({
-                .camera_id    = static_cast<int>(frame->source_id),
-                .class_id     = static_cast<int>(obj->class_id),
-                .confidence   = obj->confidence,
-                .left         = r.left,
-                .top          = r.top,
-                .width        = r.width,
-                .height       = r.height,
-                .timestamp_ns = frame->buf_pts,
+                .camera_id            = static_cast<int>(frame->source_id),
+                .class_id             = static_cast<int>(obj->class_id),
+                .confidence           = obj->confidence,
+                .left                 = r.left,
+                .top                  = r.top,
+                .width                = r.width,
+                .height               = r.height,
+                .timestamp_ns         = frame->buf_pts,
+                .capture_monotonic_ns = capture_ns,
             });
         }
     }

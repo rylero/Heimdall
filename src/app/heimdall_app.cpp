@@ -13,13 +13,12 @@ HeimdallApp::HeimdallApp(Config config)
 HeimdallApp::~HeimdallApp() { stop(); }
 
 void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
-    RobotPose pose;
-    {
-        std::lock_guard<std::mutex> lock(pose_mutex_);
-        pose = latest_pose_;
-    }
+    const uint64_t timestamp_ns  = dets.empty() ? 0ULL : dets.front().timestamp_ns;
+    const uint64_t capture_ns    = dets.empty() ? 0ULL : dets.front().capture_monotonic_ns;
 
-    const uint64_t timestamp_ns = dets.empty() ? 0ULL : dets.front().timestamp_ns;
+    // Select the robot pose whose Jetson reception time is closest to the camera
+    // capture time, compensating for DeepStream pipeline latency (typically 20–60 ms).
+    const RobotPose pose = pose_buffer_.closest(capture_ns);
 
     // Publish raw pixel detections for web UI debug feed (before pose estimation)
     comm_.publish_raw(dets, timestamp_ns);
@@ -33,9 +32,8 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
 
 void HeimdallApp::pose_recv_loop() {
     while (running_) {
-        if (auto pose = comm_.try_recv_pose()) {
-            std::lock_guard<std::mutex> lock(pose_mutex_);
-            latest_pose_ = *pose;
+        if (auto p = comm_.try_recv_pose()) {
+            pose_buffer_.push(*p);
         }
         std::this_thread::sleep_for(std::chrono::microseconds(500));
     }
