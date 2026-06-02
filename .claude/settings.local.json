@@ -45,7 +45,17 @@
       "Bash(docker system df *)",
       "Bash(cmd.exe *)",
       "Skill(update-config)",
-      "PowerShell(ls *)"
+      "PowerShell(ls *)",
+      "Bash(node *)",
+      "Bash(tasklist *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell($proc = Get-Process -Name cl -ErrorAction SilentlyContinue; if \\($proc\\) { Write-Host \"Waiting for $\\($proc.Count\\) cl.exe processes...\"; $proc | Wait-Process -Timeout 120; Write-Host \"Done\" } else { Write-Host \"No cl.exe running\" })",
+      "Bash(ctest --test-dir build -R heimdall_tracker_tests --output-on-failure)",
+      "Bash(ctest --test-dir build --output-on-failure)",
+      "Bash(build\\\\tests\\\\Debug\\\\heimdall_tracker_tests.exe [cp] *)",
+      "PowerShell(& \"C:\\\\Users\\\\ryan\\\\Dev\\\\Heimdall\\\\build\\\\tests\\\\Debug\\\\heimdall_tracker_tests.exe\" \"[cp]\" \"--reporter\" \"console\")",
+      "Bash(./build/tests/Debug/heimdall_tracker_tests.exe \"[ca]\" --reporter compact)",
+      "Bash(./build/tests/Debug/heimdall_tracker_tests.exe)"
     ]
   }
 }
