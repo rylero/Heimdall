@@ -86,9 +86,11 @@ TEST_CASE("try_recv_pose receives and deserializes robot pose", "[comm]") {
 
     auto result = comm.try_recv_pose();
     REQUIRE(result.has_value());
-    REQUIRE_THAT(result->x,       WithinAbs(7.f,   1e-4f));
-    REQUIRE_THAT(result->y,       WithinAbs(-1.f,  1e-4f));
-    REQUIRE_THAT(result->heading, WithinAbs(1.57f, 1e-4f));
+    REQUIRE_THAT(result->pose.x,       WithinAbs(7.f,   1e-4f));
+    REQUIRE_THAT(result->pose.y,       WithinAbs(-1.f,  1e-4f));
+    REQUIRE_THAT(result->pose.heading, WithinAbs(1.57f, 1e-4f));
+    REQUIRE(result->pose.timestamp_ns == 500ULL);
+    REQUIRE(result->jetson_recv_ns > 0);
 }
 
 TEST_CASE("send_frame serializes and delivers detection frame", "[comm]") {

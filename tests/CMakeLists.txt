@@ -43,12 +43,27 @@ target_link_libraries(heimdall_comm_tests
     cppzmq
     Catch2::Catch2WithMain
 )
+
+add_executable(heimdall_pose_buffer_tests
+    test_pose_buffer.cpp
+)
+target_include_directories(heimdall_pose_buffer_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(heimdall_pose_buffer_tests
+    heimdall_comm
+    Catch2::Catch2WithMain
+)
 # On Windows, libzmq is a DLL — add its output dir to the PATH used by catch_discover_tests
 # so the post-build test-discovery step can load the executable.
 if(WIN32)
     catch_discover_tests(heimdall_comm_tests
         DL_PATHS $<TARGET_FILE_DIR:libzmq>
     )
+    catch_discover_tests(heimdall_pose_buffer_tests
+        DL_PATHS $<TARGET_FILE_DIR:libzmq>
+    )
 else()
     catch_discover_tests(heimdall_comm_tests)
+    catch_discover_tests(heimdall_pose_buffer_tests)
 endif()
