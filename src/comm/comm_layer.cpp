@@ -60,6 +60,8 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
         obj->set_y(ev.object.y);
         obj->set_vx(ev.object.vx);
         obj->set_vy(ev.object.vy);
+        obj->set_ax(ev.object.ax);
+        obj->set_ay(ev.object.ay);
         obj->set_confidence(ev.object.confidence);
     }
 

@@ -5,13 +5,19 @@
 ObjectTracker::ObjectTracker(Config config) : config_(config) {}
 
 TrackedObject ObjectTracker::to_tracked_object(const Track& t) const {
+    const float vx = (t.model != FilterModel::CONSTANT_POSITION) ? t.state[2] : 0.f;
+    const float vy = (t.model != FilterModel::CONSTANT_POSITION) ? t.state[3] : 0.f;
+    const float ax = (t.model == FilterModel::CONSTANT_ACCELERATION) ? t.state[4] : 0.f;
+    const float ay = (t.model == FilterModel::CONSTANT_ACCELERATION) ? t.state[5] : 0.f;
     return {
         .track_id   = t.id,
         .class_id   = t.class_id,
         .x          = t.state[0],
         .y          = t.state[1],
-        .vx         = t.state[2],
-        .vy         = t.state[3],
+        .vx         = vx,
+        .vy         = vy,
+        .ax         = ax,
+        .ay         = ay,
         .confidence = t.confidence,
     };
 }
@@ -26,14 +32,12 @@ std::vector<TrackEvent> ObjectTracker::update(
         .p_detection     = config_.p_detection,
     };
 
-    // Run JPDA — predicts, associates, updates all existing tracks
     auto unassociated = jpda_update(tracks_, detections, timestamp_s, jpda_cfg);
 
-    // Create new tentative tracks for unassociated detections
     for (int idx : unassociated) {
         const auto& d = detections[idx];
-        tracks_.push_back(make_track(next_id_++, d.class_id, d.x, d.y, d.confidence, timestamp_s,
-                                     FilterModel::CONSTANT_VELOCITY));
+        tracks_.push_back(make_track(next_id_++, d.class_id, d.x, d.y, d.confidence,
+                                     timestamp_s, config_.filter_model));
     }
 
     std::vector<TrackEvent> events;
@@ -42,7 +46,6 @@ std::vector<TrackEvent> ObjectTracker::update(
     for (auto& t : tracks_) {
         if (t.status == TrackStatus::TENTATIVE) {
             if (t.frames_missed > 0) {
-                // Tentative tracks discarded on first miss — no LOST event
                 continue;
             }
             if (t.frames_seen >= config_.confirmation_frames) {
@@ -53,7 +56,6 @@ std::vector<TrackEvent> ObjectTracker::update(
             continue;
         }
 
-        // CONFIRMED track
         if (t.frames_missed >= config_.loss_frames) {
             events.push_back({TrackEventType::LOST, to_tracked_object(t)});
             continue;
