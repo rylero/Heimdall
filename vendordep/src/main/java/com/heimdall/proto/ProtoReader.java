@@ -30,6 +30,8 @@ import java.util.List;
  *     float  vx         = 5;  tag 0x2D (wire 5)
  *     float  vy         = 6;  tag 0x35 (wire 5)
  *     float  confidence = 7;  tag 0x3D (wire 5)
+ *     float  ax         = 8;  tag 0x45 (wire 5)
+ *     float  ay         = 9;  tag 0x4D (wire 5)
  *   }
  */
 public final class ProtoReader {
@@ -71,7 +73,7 @@ public final class ProtoReader {
     private static TrackEvent parseTrackEvent(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         TrackEventType type = TrackEventType.CONFIRMED;
-        TrackedObject obj = new TrackedObject(0, 0, 0, 0, 0, 0, 0);
+        TrackedObject obj = new TrackedObject(0, 0, 0, 0, 0, 0, 0, 0, 0);
 
         while (buf.hasRemaining()) {
             long tag = readVarint(buf);
@@ -104,7 +106,7 @@ public final class ProtoReader {
     private static TrackedObject parseTrackedObject(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         int trackId = 0, classId = 0;
-        float x = 0, y = 0, vx = 0, vy = 0, confidence = 0;
+        float x = 0, y = 0, vx = 0, vy = 0, ax = 0, ay = 0, confidence = 0;
 
         while (buf.hasRemaining()) {
             long tag = readVarint(buf);
@@ -119,10 +121,12 @@ public final class ProtoReader {
                 case 5: vx         = buf.getFloat();         break;
                 case 6: vy         = buf.getFloat();         break;
                 case 7: confidence = buf.getFloat();         break;
+                case 8: ax         = buf.getFloat();         break;
+                case 9: ay         = buf.getFloat();         break;
                 default: skipField(buf, wireType);           break;
             }
         }
-        return new TrackedObject(trackId, classId, x, y, vx, vy, confidence);
+        return new TrackedObject(trackId, classId, x, y, vx, vy, ax, ay, confidence);
     }
 
     private static long readVarint(ByteBuffer buf) {
