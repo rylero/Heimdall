@@ -32,7 +32,8 @@ std::vector<TrackEvent> ObjectTracker::update(
     // Create new tentative tracks for unassociated detections
     for (int idx : unassociated) {
         const auto& d = detections[idx];
-        tracks_.push_back(make_track(next_id_++, d.class_id, d.x, d.y, d.confidence, timestamp_s));
+        tracks_.push_back(make_track(next_id_++, d.class_id, d.x, d.y, d.confidence, timestamp_s,
+                                     FilterModel::CONSTANT_VELOCITY));
     }
 
     std::vector<TrackEvent> events;
