@@ -96,10 +96,25 @@ void DeepStreamPipeline::build() {
 
     GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
-    // process-mode=1 (GPU/CUDA) works headless — no EGL/display context needed.
-    // process-mode=0 (CPU) also works headless but is slower; mode=2 (HW/VIC) is Jetson-only.
-    g_object_set(osd, "process-mode", 1, nullptr);
+    // process-mode=0 (CPU): safe with driver 540 on Jetson — avoids raw CUDA kernels
+    // that may hang on the 540→560 driver mismatch. Slower but correct.
+    // process-mode=1 (GPU/CUDA) stalls: CUDA kernel hangs silently on driver mismatch.
+    g_object_set(osd, "process-mode", 0, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
+
+    // Diagnostic: confirm buffer enters osd at all
+    {
+        GstPad* osd_sink = gst_element_get_static_pad(osd, "sink");
+        if (osd_sink) {
+            gst_pad_add_probe(osd_sink, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                    static int n = 0;
+                    if (++n <= 5) g_printerr("[diag] osd sink frame %d\n", n);
+                    return GST_PAD_PROBE_OK;
+                }, nullptr, nullptr);
+            gst_object_unref(osd_sink);
+        }
+    }
 
     // nvvidconv: convert NVMM output from nvdsosd to the format the encoder expects
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
