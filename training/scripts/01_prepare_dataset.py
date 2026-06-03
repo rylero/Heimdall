@@ -40,8 +40,9 @@ def build_coco_dict(images, annotations, categories):
 
 
 def write_split(entries, split_name, coco_dir, categories):
-    coco_images_dir = coco_dir / "images"
-    coco_images_dir.mkdir(parents=True, exist_ok=True)
+    # rfdetr expects Roboflow COCO layout: <split>/_annotations.coco.json + images in same dir
+    split_dir = coco_dir / split_name
+    split_dir.mkdir(parents=True, exist_ok=True)
 
     images_out = []
     annotations_out = []
@@ -61,7 +62,7 @@ def write_split(entries, split_name, coco_dir, categories):
             "height": h,
         })
 
-        dst = coco_images_dir / img_path.name
+        dst = split_dir / img_path.name
         if not dst.exists():
             shutil.copy2(img_path, dst)
 
@@ -86,7 +87,7 @@ def write_split(entries, split_name, coco_dir, categories):
             })
             ann_id += 1
 
-    out_file = coco_dir / f"{split_name}.json"
+    out_file = split_dir / "_annotations.coco.json"
     out_file.write_text(json.dumps(build_coco_dict(images_out, annotations_out, categories), indent=2))
     print(f"  Wrote {out_file} ({len(images_out)} images, {len(annotations_out)} annotations)")
 
@@ -135,7 +136,7 @@ def main():
     print(f"  Train: {len(train_set)}, Val: {len(val_set)}")
 
     write_split(train_set, "train", coco_dir, categories)
-    write_split(val_set, "val", coco_dir, categories)
+    write_split(val_set, "valid", coco_dir, categories)  # rfdetr expects "valid" not "val"
     print("Dataset preparation complete.")
 
 
