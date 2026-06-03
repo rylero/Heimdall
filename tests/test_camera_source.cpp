@@ -15,12 +15,20 @@ TEST_CASE("USB source contains resolution", "[camera]") {
     REQUIRE(s.find("height=480") != std::string::npos);
 }
 
-TEST_CASE("USB source uses hardware MJPEG decoder with NV12 output", "[camera]") {
-    CameraConfig cfg{0, CameraType::USB, "/dev/video0", 640, 480, 100};
+TEST_CASE("USB source hw_decode=true uses nvv4l2decoder", "[camera]") {
+    CameraConfig cfg{.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=60, .hw_decode=true};
     auto s = build_source_description(cfg);
     REQUIRE(s.find("nvv4l2decoder") != std::string::npos);
     REQUIRE(s.find("mjpeg=1") != std::string::npos);
     REQUIRE(s.find("jpegdec") == std::string::npos);
+    REQUIRE(s.find("nvvidconv") != std::string::npos);
+}
+
+TEST_CASE("USB source hw_decode=false uses CPU jpegdec", "[camera]") {
+    CameraConfig cfg{.id=1, .type=CameraType::USB, .device="/dev/video2", .width=640, .height=480, .fps=30, .hw_decode=false};
+    auto s = build_source_description(cfg);
+    REQUIRE(s.find("jpegdec") != std::string::npos);
+    REQUIRE(s.find("nvv4l2decoder") == std::string::npos);
     REQUIRE(s.find("nvvidconv") != std::string::npos);
 }
 

@@ -39,6 +39,35 @@ void DeepStreamPipeline::build() {
     // camera_id → tee element, populated for cameras that have at least one mirror
     std::unordered_map<int, GstElement*> tees;
 
+    // Insert a leaky queue between a tee output pad and the mux sink.
+    // leaky=2 (downstream) drops the oldest buffer when full so neither tee branch
+    // can stall the other — preventing backpressure from reaching v4l2src.
+    auto link_via_leaky_queue = [&](GstPad* tee_src_pad, int slot) {
+        std::string qname = "tee_q_" + std::to_string(slot);
+        GstElement* q = gst_element_factory_make("queue", qname.c_str());
+        if (!q) throw std::runtime_error("Failed to create leaky queue for slot " + std::to_string(slot));
+        g_object_set(q,
+            "max-size-buffers", 2u,
+            "max-size-bytes",   0u,
+            "max-size-time",    guint64(0),
+            "leaky",            2u,  // GST_QUEUE_LEAK_DOWNSTREAM
+            nullptr);
+        gst_bin_add(GST_BIN(pipeline_), q);
+
+        GstPad* q_sink = gst_element_get_static_pad(q, "sink");
+        GstPad* q_src  = gst_element_get_static_pad(q, "src");
+        GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(slot)).c_str());
+        if (!q_sink || !q_src || !mux_sink)
+            throw std::runtime_error("Failed to get pads for leaky queue slot " + std::to_string(slot));
+        if (gst_pad_link(tee_src_pad, q_sink) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link tee → queue for slot " + std::to_string(slot));
+        if (gst_pad_link(q_src, mux_sink) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link queue → mux for slot " + std::to_string(slot));
+        gst_object_unref(q_sink);
+        gst_object_unref(q_src);
+        gst_object_unref(mux_sink);
+    };
+
     // First pass: build source bins for real cameras; insert tee if any camera mirrors them
     for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
         if (cameras_[i].mirror_of >= 0) continue;
@@ -58,7 +87,6 @@ void DeepStreamPipeline::build() {
         gst_element_set_name(src, ("src_" + std::to_string(i)).c_str());
         gst_bin_add(GST_BIN(pipeline_), src);
 
-        GstPad* out_pad;
         if (needs_tee) {
             GstElement* tee = gst_element_factory_make("tee", ("tee_" + std::to_string(cameras_[i].id)).c_str());
             if (!tee) throw std::runtime_error("Failed to create tee for camera " + std::to_string(i));
@@ -72,21 +100,23 @@ void DeepStreamPipeline::build() {
             gst_object_unref(tee_sink);
 
             tees[cameras_[i].id] = tee;
-            out_pad = gst_element_get_request_pad(tee, "src_%u");
+            GstPad* tee_src = gst_element_get_request_pad(tee, "src_%u");
+            if (!tee_src) throw std::runtime_error("No tee src pad for camera " + std::to_string(i));
+            link_via_leaky_queue(tee_src, i);
+            gst_object_unref(tee_src);
         } else {
-            out_pad = gst_element_get_static_pad(src, "src");
+            GstPad* out_pad  = gst_element_get_static_pad(src, "src");
+            GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
+            if (!out_pad || !mux_sink)
+                throw std::runtime_error("No output pad for camera " + std::to_string(i));
+            if (gst_pad_link(out_pad, mux_sink) != GST_PAD_LINK_OK)
+                throw std::runtime_error("Failed to link src to mux for camera " + std::to_string(i));
+            gst_object_unref(out_pad);
+            gst_object_unref(mux_sink);
         }
-
-        if (!out_pad) throw std::runtime_error("No output pad for camera " + std::to_string(i));
-        GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
-        if (!mux_sink) throw std::runtime_error("Failed to get mux sink pad for camera " + std::to_string(i));
-        if (gst_pad_link(out_pad, mux_sink) != GST_PAD_LINK_OK)
-            throw std::runtime_error("Failed to link src to mux for camera " + std::to_string(i));
-        gst_object_unref(out_pad);
-        gst_object_unref(mux_sink);
     }
 
-    // Second pass: link mirror cameras from their source's tee
+    // Second pass: link mirror cameras from their source's tee via leaky queues
     for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
         if (cameras_[i].mirror_of < 0) continue;
 
@@ -97,13 +127,10 @@ void DeepStreamPipeline::build() {
                 " which has no tee — check mirror_of ids");
 
         GstPad* tee_src  = gst_element_get_request_pad(it->second, "src_%u");
-        GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
-        if (!tee_src || !mux_sink)
-            throw std::runtime_error("Failed to get pads for mirror camera " + std::to_string(i));
-        if (gst_pad_link(tee_src, mux_sink) != GST_PAD_LINK_OK)
-            throw std::runtime_error("Failed to link tee to mux for mirror camera " + std::to_string(i));
+        if (!tee_src)
+            throw std::runtime_error("Failed to get tee src pad for mirror camera " + std::to_string(i));
+        link_via_leaky_queue(tee_src, i);
         gst_object_unref(tee_src);
-        gst_object_unref(mux_sink);
     }
 
     GstElement* infer = gst_element_factory_make("nvinfer", "infer");

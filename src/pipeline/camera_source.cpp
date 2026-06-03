@@ -6,18 +6,19 @@ std::string build_source_description(const CameraConfig& cfg) {
     std::ostringstream ss;
     switch (cfg.type) {
         case CameraType::USB:
-            // nvv4l2decoder mjpeg=1 uses Jetson hardware JPEG decode and outputs NVMM directly,
-            // avoiding the CPU jpegdec + nvvidconv path that caps throughput at ~30fps.
-            // nvv4l2decoder outputs Y42B NVMM; nvvidconv converts to NV12 NVMM for nvstreammux.
-            // Caps negotiation is left to nvvidconv↔nvstreammux; inline (memory:NVMM) caps
-            // syntax breaks gst_parse_bin_from_description.
             ss << "v4l2src device=" << cfg.device
                << " ! image/jpeg"
                << ",width="  << cfg.width
                << ",height=" << cfg.height
-               << ",framerate=" << cfg.fps << "/1"
-               << " ! nvv4l2decoder mjpeg=1"
-               << " ! nvvidconv";
+               << ",framerate=" << cfg.fps << "/1";
+            if (cfg.hw_decode) {
+                // nvv4l2decoder uses Jetson NvJPEG hardware; Orin Nano has one unit —
+                // only one camera can use this path. Outputs Y42B NVMM; nvvidconv→NV12.
+                ss << " ! nvv4l2decoder mjpeg=1 ! nvvidconv";
+            } else {
+                // CPU path: jpegdec → nvvidconv (CPU→NVMM); ~30fps cap but no HW limit.
+                ss << " ! jpegdec ! nvvidconv";
+            }
             break;
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
