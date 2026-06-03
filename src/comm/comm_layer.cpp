@@ -66,7 +66,11 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
     }
 
     std::string bytes = frame.SerializeAsString();
-    push_sock_.send(zmq::buffer(bytes), zmq::send_flags::none);
+    try {
+        push_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
+    } catch (const zmq::error_t&) {
+        // No receiver connected — drop frame rather than stall the pipeline thread.
+    }
 }
 
 void CommLayer::publish_raw(const std::vector<Detection>& detections,
