@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
-    libgstrtspserver-1.0-dev \
     git \
     ccache \
     && rm -rf /var/lib/apt/lists/*
@@ -33,7 +32,8 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           tests/test_kalman.cpp tests/test_pose_estimator.cpp \
           tests/test_comm_layer.cpp tests/test_jpda.cpp tests/test_tracker.cpp \
           tests/test_pose_buffer.cpp
-RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+RUN PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache
 
