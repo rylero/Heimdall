@@ -17,7 +17,7 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
     auto  now = std::chrono::steady_clock::now();
     float dt  = std::chrono::duration<float>(now - s_last_ts).count();
     s_last_ts = now;
-    if (dt > 0.f && dt < 1.f)
+    if (dt > 0.005f && dt < 1.f)   // 5ms minimum avoids microsecond artifact on first call
         s_fps = s_fps * 0.85f + (1.f / dt) * 0.15f;
 
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
