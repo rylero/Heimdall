@@ -1,17 +1,21 @@
 [property]
 gpu-id=0
-net-scale-factor=0.0039215697906911373
-model-engine-file=/app/models/inference_model.engine
+# ImageNet normalization: output = (input - offset) * scale
+# mean=[123.675, 116.28, 103.53]  std≈57.63 (avg of 58.395, 57.12, 57.375)
+net-scale-factor=0.017352074816046
+offsets=123.675;116.28;103.53
+model-engine-file=/app/models/rfdetr_nano_480_int8.trt
 labelfile-path=/app/models/labels.txt
+input-dims=3;480;480;0
 batch-size=1
 network-mode=2
-num-detected-classes=91
-interval=1
+num-detected-classes=1
+interval=0
 gie-unique-id=1
 network-type=0
 parse-bbox-func-name=NvDsInferParseCustomRFDetr
 custom-lib-path=/app/build/src/models/bbox_parser/librfdetr_parser.so
 
 [class-attrs-all]
-threshold=0.3
+threshold=0.5
 nms-iou-threshold=0.45
