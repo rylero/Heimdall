@@ -88,10 +88,15 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    // ISOLATION TEST: osd sink probe never fires — infer→osd push blocks.
-    // Bypass nvdsosd to confirm it is the stall; re-add after base pipeline works.
-    // If [stage] conv_out frame 1 fires → osd is the block.
-    // If no stage probes → stall is in nvinfer push or caps negotiation with nvvidconv.
+    // queue creates a thread boundary between nvstreammux's output thread (which drives
+    // nvinfer) and the encoding chain (which feeds flvmux, another GstAggregator).
+    // Without this, flvmux's latency query propagates upstream on nvstreammux's thread
+    // while nvstreammux holds its own lock — deadlock. DeepStream reference pipelines
+    // always queue between major stages for exactly this reason.
+    GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
+    if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
+    g_object_set(queue_post_infer, "max-size-buffers", 4u, "max-size-bytes", 0u, "max-size-time", guint64(0), nullptr);
+    gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
     // nvvidconv: convert NVMM output from nvinfer to the format the encoder expects
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
@@ -145,8 +150,10 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, conv_out))
-        throw std::runtime_error("Failed to link infer→conv_out");
+    if (!gst_element_link(infer, queue_post_infer))
+        throw std::runtime_error("Failed to link infer→queue");
+    if (!gst_element_link(queue_post_infer, conv_out))
+        throw std::runtime_error("Failed to link queue→conv_out");
     if (!gst_element_link(conv_out, caps_out))
         throw std::runtime_error("Failed to link conv_out→caps_out");
     if (!gst_element_link(caps_out, encoder))
