@@ -108,33 +108,54 @@ void DeepStreamPipeline::build() {
     g_object_set(osd, "process-mode", 1, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    // nvvidconv: normalize NVMM output from nvdsosd before nvrtspoutsinkbin
+    // nvvidconv: convert NVMM output from nvdsosd to the format the encoder expects
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
     if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
 
-    // enc-type=0 → nvv4l2h264enc (HW Jetson), enc-type=1 → x264enc (SW fallback)
+    // Choose encoder based on HW availability
     GstElement* test_enc = gst_element_factory_make("nvv4l2h264enc", nullptr);
-    const guint enc_type = test_enc ? 0u : 1u;
+    const bool  hw_enc   = (test_enc != nullptr);
     if (test_enc) {
         gst_object_unref(test_enc);
     } else {
-        g_printerr("[pipeline] nvv4l2h264enc unavailable, nvrtspoutsinkbin will use x264enc (enc-type=1)\n");
+        g_printerr("[pipeline] nvv4l2h264enc unavailable, using x264enc\n");
     }
 
-    // nvrtspoutsinkbin: DeepStream-native RTSP output — encoding + RTSP server handled
-    // internally by the container's own GstRTSPServer build, avoiding the ABI mismatch
-    // that occurs when calling GstRTSPServer C API directly from our binary.
-    GstElement* rtsp_out = gst_element_factory_make("nvrtspoutsinkbin", "rtsp_out");
-    if (!rtsp_out) throw std::runtime_error("Failed to create nvrtspoutsinkbin");
-    g_object_set(rtsp_out,
-        "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
-        "enc-type",  enc_type,
-        "bitrate",   static_cast<guint>(4000000),
-        "sync",      FALSE,
-        "async",     FALSE,
-        nullptr);
-    gst_bin_add(GST_BIN(pipeline_), rtsp_out);
+    GstElement* encoder;
+    GstCaps*    enc_caps;
+    if (hw_enc) {
+        encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
+        if (!encoder) throw std::runtime_error("Failed to create nvv4l2h264enc");
+        g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
+        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
+    } else {
+        encoder  = gst_element_factory_make("x264enc", "encoder");
+        if (!encoder) throw std::runtime_error("No H264 encoder available");
+        g_object_set(encoder, "bitrate", 4000u, nullptr);  // kbps
+        enc_caps = gst_caps_from_string("video/x-raw,format=I420");
+    }
+    gst_bin_add(GST_BIN(pipeline_), encoder);
+
+    GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
+    if (!caps_out) throw std::runtime_error("Failed to create capsfilter");
+    g_object_set(caps_out, "caps", enc_caps, nullptr);
+    gst_caps_unref(enc_caps);
+    gst_bin_add(GST_BIN(pipeline_), caps_out);
+
+    GstElement* rtp_pay = gst_element_factory_make("rtph264pay", "rtp_pay");
+    if (!rtp_pay) throw std::runtime_error("Failed to create rtph264pay");
+    g_object_set(rtp_pay, "config-interval", 1, "pt", 96, nullptr);
+    gst_bin_add(GST_BIN(pipeline_), rtp_pay);
+
+    // rtspclientsink publishes the encoded H264 stream to MediaMTX via RTSP ANNOUNCE.
+    // MediaMTX (sidecar Docker service) serves it to viewers — no GstRTSPServer
+    // linking in our binary, no preroll issues, works with any encoder.
+    std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(RTSP_SERV_PORT) + "/ds-test";
+    GstElement* rtsp_sink = gst_element_factory_make("rtspclientsink", "rtsp_sink");
+    if (!rtsp_sink) throw std::runtime_error("Failed to create rtspclientsink");
+    g_object_set(rtsp_sink, "location", rtsp_url.c_str(), nullptr);
+    gst_bin_add(GST_BIN(pipeline_), rtsp_sink);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
@@ -144,12 +165,19 @@ void DeepStreamPipeline::build() {
         throw std::runtime_error("Failed to link tiler→osd");
     if (!gst_element_link(osd, conv_out))
         throw std::runtime_error("Failed to link osd→conv_out");
-    if (!gst_element_link(conv_out, rtsp_out))
-        throw std::runtime_error("Failed to link conv_out→rtsp_out");
+    if (!gst_element_link(conv_out, caps_out))
+        throw std::runtime_error("Failed to link conv_out→caps_out");
+    if (!gst_element_link(caps_out, encoder))
+        throw std::runtime_error("Failed to link caps_out→encoder");
+    if (!gst_element_link(encoder, rtp_pay))
+        throw std::runtime_error("Failed to link encoder→rtp_pay");
+    if (!gst_element_link(rtp_pay, rtsp_sink))
+        throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
 
     add_stage_probe(tiler,    "tiler");
     add_stage_probe(osd,      "osd");
     add_stage_probe(conv_out, "conv_out");
+    add_stage_probe(encoder,  "encoder");
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
@@ -157,7 +185,7 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test\n", RTSP_SERV_PORT);
+    std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test  (served by MediaMTX)\n", RTSP_SERV_PORT);
 }
 
 GstPadProbeReturn DeepStreamPipeline::stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer data) {
