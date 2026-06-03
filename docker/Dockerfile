@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM nvcr.io/nvidia/deepstream:7.1-triton-multiarch
+FROM nvcr.io/nvidia/deepstream-l4t:7.1-triton-multiarch
 
 RUN apt-get update && apt-get install -y \
     cmake \
