@@ -52,27 +52,9 @@ void DeepStreamPipeline::build() {
         GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
         if (!mux_sink) throw std::runtime_error("Failed to get mux sink pad for camera " + std::to_string(i));
 
-        if (cameras_[i].type == CameraType::USB) {
-            // USB sources output CPU memory after jpegdec; nvvidconv converts to NVMM
-            GstElement* conv = gst_element_factory_make("nvvidconv",
-                ("cnv_" + std::to_string(i)).c_str());
-            if (!conv) throw std::runtime_error("Failed to create nvvidconv");
-            gst_bin_add(GST_BIN(pipeline_), conv);
-
-            GstPad* conv_sink = gst_element_get_static_pad(conv, "sink");
-            if (gst_pad_link(src_pad, conv_sink) != GST_PAD_LINK_OK)
-                throw std::runtime_error("Failed to link src to nvvidconv");
-            gst_object_unref(conv_sink);
-
-            GstPad* conv_src = gst_element_get_static_pad(conv, "src");
-            if (gst_pad_link(conv_src, mux_sink) != GST_PAD_LINK_OK)
-                throw std::runtime_error("Failed to link nvvidconv to mux");
-            gst_object_unref(conv_src);
-        } else {
-            // CSI sources already output NVMM; link directly to mux
-            if (gst_pad_link(src_pad, mux_sink) != GST_PAD_LINK_OK)
-                throw std::runtime_error("Failed to link src to mux");
-        }
+        // USB (nvv4l2decoder) and CSI both output NVMM; link directly to mux
+        if (gst_pad_link(src_pad, mux_sink) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link src to mux for camera " + std::to_string(i));
         gst_object_unref(src_pad);
         gst_object_unref(mux_sink);
     }

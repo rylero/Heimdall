@@ -6,17 +6,14 @@ std::string build_source_description(const CameraConfig& cfg) {
     std::ostringstream ss;
     switch (cfg.type) {
         case CameraType::USB:
-            // Assumes camera outputs MJPEG (fastest path on Jetson).
-            // If camera only supports raw YUY2, replace image/jpeg + jpegdec
-            // with: video/x-raw,format=YUY2 ! videoconvert
+            // nvv4l2decoder mjpeg=1 uses Jetson hardware JPEG decode and outputs NVMM directly,
+            // avoiding the CPU jpegdec + nvvidconv path that caps throughput at ~30fps.
             ss << "v4l2src device=" << cfg.device
                << " ! image/jpeg"
                << ",width="  << cfg.width
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1"
-               << " ! jpegdec";
-            // nvvidconv for NVMM conversion is added in pipeline.cpp for USB sources only;
-            // CSI sources (nvarguscamerasrc) already output NVMM and link directly to mux.
+               << " ! nvv4l2decoder mjpeg=1";
             break;
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
