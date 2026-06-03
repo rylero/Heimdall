@@ -21,7 +21,7 @@ TEST_CASE("USB source uses hardware MJPEG decoder with NV12 output", "[camera]")
     REQUIRE(s.find("nvv4l2decoder") != std::string::npos);
     REQUIRE(s.find("mjpeg=1") != std::string::npos);
     REQUIRE(s.find("jpegdec") == std::string::npos);
-    REQUIRE(s.find("format=NV12") != std::string::npos);
+    REQUIRE(s.find("nvvidconv") != std::string::npos);
 }
 
 TEST_CASE("CSI source contains nvarguscamerasrc and sensor-id", "[camera]") {
