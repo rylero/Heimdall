@@ -88,20 +88,74 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    // ISOLATION: bare fakesink directly after infer — no queue, no encoder, no flvmux.
-    // Goal: confirm whether nvinfer's output thread pushes multiple frames (2, 3, 4...)
-    // or stalls after frame 1.
-    //   Multiple frames → nvinfer is healthy; stall is in downstream delivery/caps.
-    //   Only frame 1    → stall is inside nvinfer's output thread itself.
-    GstElement* rtmp_sink = gst_element_factory_make("fakesink", "rtmp_sink");
-    if (!rtmp_sink) throw std::runtime_error("Failed to create fakesink");
-    g_object_set(rtmp_sink, "sync", FALSE, nullptr);
+    // queue decouples nvstreammux's streaming thread from the encoding chain,
+    // preventing any latency-query interaction between the two GstAggregator elements.
+    GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
+    if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
+    g_object_set(queue_post_infer,
+        "max-size-buffers", 4u,
+        "max-size-bytes",   0u,
+        "max-size-time",    guint64(0),
+        nullptr);
+    gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
+
+    GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
+    if (!osd) throw std::runtime_error("Failed to create nvdsosd");
+    g_object_set(osd, "process-mode", 0, nullptr);  // CPU mode: safe on all driver versions
+    gst_bin_add(GST_BIN(pipeline_), osd);
+
+    GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
+    if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
+    gst_bin_add(GST_BIN(pipeline_), conv_out);
+
+    GstElement* test_enc = gst_element_factory_make("nvv4l2h264enc", nullptr);
+    const bool  hw_enc   = (test_enc != nullptr);
+    if (test_enc) gst_object_unref(test_enc);
+    else g_printerr("[pipeline] nvv4l2h264enc unavailable, using x264enc\n");
+
+    GstElement* encoder;
+    GstCaps*    enc_caps;
+    if (hw_enc) {
+        encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
+        if (!encoder) throw std::runtime_error("Failed to create nvv4l2h264enc");
+        g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
+        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
+    } else {
+        encoder  = gst_element_factory_make("x264enc", "encoder");
+        if (!encoder) throw std::runtime_error("No H264 encoder available");
+        g_object_set(encoder, "bitrate", 4000u, nullptr);
+        enc_caps = gst_caps_from_string("video/x-raw,format=I420");
+    }
+    gst_bin_add(GST_BIN(pipeline_), encoder);
+
+    GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
+    if (!caps_out) throw std::runtime_error("Failed to create capsfilter");
+    g_object_set(caps_out, "caps", enc_caps, nullptr);
+    gst_caps_unref(enc_caps);
+    gst_bin_add(GST_BIN(pipeline_), caps_out);
+
+    GstElement* flvmux = gst_element_factory_make("flvmux", "flvmux");
+    if (!flvmux) throw std::runtime_error("Failed to create flvmux");
+    g_object_set(flvmux, "streamable", TRUE, nullptr);
+    gst_bin_add(GST_BIN(pipeline_), flvmux);
+
+    GstElement* rtmp_sink = gst_element_factory_make("rtmpsink", "rtmp_sink");
+    if (!rtmp_sink) throw std::runtime_error("Failed to create rtmpsink");
+    g_object_set(rtmp_sink, "location", "rtmp://127.0.0.1:1935/live/ds-test", nullptr);
     gst_bin_add(GST_BIN(pipeline_), rtmp_sink);
 
-    if (!gst_element_link(mux, infer))
-        throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, rtmp_sink))
-        throw std::runtime_error("Failed to link infer→fakesink");
+    if (!gst_element_link(mux,             infer))          throw std::runtime_error("Failed to link mux→infer");
+    if (!gst_element_link(infer,           queue_post_infer)) throw std::runtime_error("Failed to link infer→queue");
+    if (!gst_element_link(queue_post_infer, osd))            throw std::runtime_error("Failed to link queue→osd");
+    if (!gst_element_link(osd,             conv_out))        throw std::runtime_error("Failed to link osd→conv_out");
+    if (!gst_element_link(conv_out,        caps_out))        throw std::runtime_error("Failed to link conv_out→caps_out");
+    if (!gst_element_link(caps_out,        encoder))         throw std::runtime_error("Failed to link caps_out→encoder");
+    if (!gst_element_link(encoder,         flvmux))          throw std::runtime_error("Failed to link encoder→flvmux");
+    if (!gst_element_link(flvmux,          rtmp_sink))       throw std::runtime_error("Failed to link flvmux→rtmp_sink");
+
+    add_stage_probe(osd,      "osd");
+    add_stage_probe(conv_out, "conv_out");
+    add_stage_probe(encoder,  "encoder");
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
