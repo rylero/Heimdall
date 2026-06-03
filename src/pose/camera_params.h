@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <cmath>
+#include <cstdint>
 
 struct CameraIntrinsics {
     float fx, fy;   // focal lengths, pixels
