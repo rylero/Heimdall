@@ -151,13 +151,11 @@ void DeepStreamPipeline::build() {
     g_object_set(flvmux, "streamable", TRUE, nullptr);
     gst_bin_add(GST_BIN(pipeline_), flvmux);
 
-    // librtmp parses URL as rtmp://host:port/app/streamkey; single path component
-    // (e.g. /ds-test) gives empty streamkey which is rejected. Use /live/ds-test.
-    // MediaMTX creates path "live/ds-test" → rtsp://host:8554/live/ds-test
-    std::string rtmp_url = "rtmp://127.0.0.1:1935/live/ds-test";
-    GstElement* rtmp_sink = gst_element_factory_make("rtmpsink", "rtmp_sink");
-    if (!rtmp_sink) throw std::runtime_error("Failed to create rtmpsink");
-    g_object_set(rtmp_sink, "location", rtmp_url.c_str(), nullptr);
+    // TEST: fakesink to verify DeepStream pipeline produces output independent of RTMP.
+    // If stage probes fire with this sink, swap back to rtmpsink.
+    GstElement* rtmp_sink = gst_element_factory_make("fakesink", "rtmp_sink");
+    if (!rtmp_sink) throw std::runtime_error("Failed to create fakesink");
+    g_object_set(rtmp_sink, "sync", FALSE, nullptr);
     gst_bin_add(GST_BIN(pipeline_), rtmp_sink);
 
     if (!gst_element_link(mux, infer))
