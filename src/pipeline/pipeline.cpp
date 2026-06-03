@@ -163,7 +163,7 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 200 * GST_MSECOND);
+    gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 600 * GST_MSECOND);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
