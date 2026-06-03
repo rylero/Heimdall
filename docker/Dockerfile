@@ -31,7 +31,8 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           tools/mock_robot.cpp \
           tests/test_camera_source.cpp tests/test_pipeline_chain.cpp \
           tests/test_kalman.cpp tests/test_pose_estimator.cpp \
-          tests/test_comm_layer.cpp tests/test_jpda.cpp tests/test_tracker.cpp
+          tests/test_comm_layer.cpp tests/test_jpda.cpp tests/test_tracker.cpp \
+          tests/test_pose_buffer.cpp
 RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
     -DCMAKE_C_COMPILER_LAUNCHER=ccache
