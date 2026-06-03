@@ -5,7 +5,7 @@ gpu-id=0
 net-scale-factor=0.017352074816046
 offsets=123.675;116.28;103.53
 onnx-file=/app/models/rfdetr_nano_480.onnx
-model-engine-file=/app/models/rfdetr_nano_480_int8.trt
+model-engine-file=/app/models/rfdetr_nano_480_fp16.trt
 labelfile-path=/app/models/labels.txt
 input-dims=3;480;480;0
 batch-size=1
@@ -18,5 +18,6 @@ parse-bbox-func-name=NvDsInferParseCustomRFDetr
 custom-lib-path=/app/build/src/models/bbox_parser/librfdetr_parser.so
 
 [class-attrs-all]
+# Minimum confidence to emit a detection (0.0–1.0)
 threshold=0.5
 nms-iou-threshold=0.45
