@@ -112,8 +112,7 @@ void DeepStreamPipeline::build() {
     // Try HW encoder first; fall back to x264enc when nvv4l2h264enc isn't available
     GstElement* encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
     GstCaps*    enc_caps = nullptr;
-    const bool  hw_enc   = (encoder != nullptr);
-    if (hw_enc) {
+    if (encoder) {
         g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
         enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
     } else {
@@ -126,12 +125,11 @@ void DeepStreamPipeline::build() {
     }
     gst_bin_add(GST_BIN(pipeline_), encoder);
 
-    // HW encoder reads NVMM directly — nvvidconv handles NVMM→NVMM.
-    // SW encoder (x264enc) needs system memory — videoconvert avoids nvvidconv
-    // which requires driver ≥560 and stalls silently on older drivers.
-    const char* conv_name = hw_enc ? "nvvidconv" : "videoconvert";
-    GstElement* conv_out  = gst_element_factory_make(conv_name, "conv_out");
-    if (!conv_out) throw std::runtime_error(std::string("Failed to create ") + conv_name);
+    // nvvidconv converts NVMM (from nvdsosd) to system memory for x264enc,
+    // or NVMM→NVMM for nvv4l2h264enc. It uses Tegra BSP, not the x86 CUDA
+    // driver, so the driver-version warning in logs is a false positive on Jetson.
+    GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
+    if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
 
     // Force caps to match what the chosen encoder expects
