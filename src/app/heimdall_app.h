@@ -6,6 +6,9 @@
 #include "pose/pose_estimator.h"
 #include "tracker/tracker.h"
 #include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
 #include <thread>
 #include <vector>
 
@@ -40,6 +43,14 @@ private:
     std::atomic<bool>  stopped_{false};
     std::thread        pose_recv_thread_;
 
+    static constexpr int               kMaxDetQueue = 8;
+    std::queue<std::vector<Detection>> det_queue_;
+    std::mutex                         det_mutex_;
+    std::condition_variable            det_cv_;
+    std::thread                        det_worker_thread_;
+
     void on_detections(const std::vector<Detection>& dets);
+    void enqueue_detections(const std::vector<Detection>& dets);
+    void det_worker_loop();
     void pose_recv_loop();
 };

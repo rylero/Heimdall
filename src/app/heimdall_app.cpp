@@ -7,7 +7,7 @@ HeimdallApp::HeimdallApp(Config config)
       tracker_(config_.tracker),
       comm_(config_.comm),
       pipeline_(config_.pipeline_cameras, config_.infer_config_path,
-                [this](const std::vector<Detection>& d){ on_detections(d); })
+                [this](const std::vector<Detection>& d){ enqueue_detections(d); })
 {}
 
 HeimdallApp::~HeimdallApp() { stop(); }
@@ -30,6 +30,27 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
 }
 
+void HeimdallApp::enqueue_detections(const std::vector<Detection>& dets) {
+    std::lock_guard lock(det_mutex_);
+    if (static_cast<int>(det_queue_.size()) >= kMaxDetQueue) return;  // drop if worker falls behind
+    det_queue_.push(dets);
+    det_cv_.notify_one();
+}
+
+void HeimdallApp::det_worker_loop() {
+    while (true) {
+        std::vector<Detection> dets;
+        {
+            std::unique_lock lock(det_mutex_);
+            det_cv_.wait(lock, [this]{ return !det_queue_.empty() || !running_; });
+            if (!running_ && det_queue_.empty()) break;
+            dets = std::move(det_queue_.front());
+            det_queue_.pop();
+        }
+        on_detections(dets);
+    }
+}
+
 void HeimdallApp::pose_recv_loop() {
     while (running_) {
         if (auto p = comm_.try_recv_pose()) {
@@ -41,14 +62,18 @@ void HeimdallApp::pose_recv_loop() {
 
 void HeimdallApp::run() {
     running_ = true;
-    pose_recv_thread_ = std::thread([this]{ pose_recv_loop(); });
+    det_worker_thread_ = std::thread([this]{ det_worker_loop(); });
+    pose_recv_thread_  = std::thread([this]{ pose_recv_loop(); });
     pipeline_.run();  // blocks until stop() or pipeline error
 }
 
 void HeimdallApp::stop() {
     if (stopped_.exchange(true)) return;  // guard against double-stop
     running_ = false;
+    det_cv_.notify_all();
     pipeline_.stop();
+    if (det_worker_thread_.joinable())
+        det_worker_thread_.join();
     if (pose_recv_thread_.joinable())
         pose_recv_thread_.join();
 }
