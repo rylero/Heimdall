@@ -188,6 +188,25 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
+    // v4l2src can't report latency until caps are negotiated, but GstAggregator
+    // subclasses (nvmultistreamtiler, flvmux) query latency during state transitions
+    // before caps are fixed — they can stall indefinitely on a failed query.
+    // Setting explicit pipeline latency overrides the failed query and unblocks them.
+    gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 200 * GST_MSECOND);
+
+    // Diagnostic: confirm buffer enters tiler (if this fires but tiler src probe
+    // doesn't, the stall is inside tiler; if this doesn't fire, it's between infer and tiler)
+    GstPad* tiler_sink_pad = gst_element_get_static_pad(tiler, "sink");
+    if (tiler_sink_pad) {
+        gst_pad_add_probe(tiler_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
+            [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                static int n = 0;
+                if (++n <= 5) g_printerr("[diag] tiler sink frame %d\n", n);
+                return GST_PAD_PROBE_OK;
+            }, nullptr, nullptr);
+        gst_object_unref(tiler_sink_pad);
+    }
+
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
 
