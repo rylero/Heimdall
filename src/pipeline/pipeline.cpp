@@ -192,6 +192,10 @@ void DeepStreamPipeline::build() {
     // (on deepstream-l4t/GStreamer 1.20 it may not, freeing the object on unref).
     GstRTSPMountPoints*  mounts  = gst_rtsp_mount_points_new();
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
+    g_printerr("[rtsp] factory=%p G_IS_OBJECT=%d GST_IS_RTSP_MEDIA_FACTORY=%d\n",
+        factory,
+        factory ? (int)G_IS_OBJECT(factory) : -1,
+        factory ? (int)GST_IS_RTSP_MEDIA_FACTORY(factory) : -1);
     std::string launch =
         "( udpsrc port=" + std::to_string(RTP_PORT) +
         " caps=\"application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96\""
