@@ -143,19 +143,20 @@ void DeepStreamPipeline::build() {
     gst_caps_unref(enc_caps);
     gst_bin_add(GST_BIN(pipeline_), caps_out);
 
-    GstElement* rtp_pay = gst_element_factory_make("rtph264pay", "rtp_pay");
-    if (!rtp_pay) throw std::runtime_error("Failed to create rtph264pay");
-    g_object_set(rtp_pay, "config-interval", 1, "pt", 96, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), rtp_pay);
+    // flvmux wraps H264 in FLV for RTMP publishing.
+    // rtspclientsink pad caps are deferred until server connection (NOFORMAT in NULL
+    // state); RTMP publish avoids that issue — rtmpsink has a plain static sink pad.
+    GstElement* flvmux = gst_element_factory_make("flvmux", "flvmux");
+    if (!flvmux) throw std::runtime_error("Failed to create flvmux");
+    g_object_set(flvmux, "streamable", TRUE, nullptr);
+    gst_bin_add(GST_BIN(pipeline_), flvmux);
 
-    // rtspclientsink publishes the encoded H264 stream to MediaMTX via RTSP ANNOUNCE.
-    // MediaMTX (sidecar Docker service) serves it to viewers — no GstRTSPServer
-    // linking in our binary, no preroll issues, works with any encoder.
-    std::string rtsp_url = "rtsp://127.0.0.1:" + std::to_string(RTSP_SERV_PORT) + "/ds-test";
-    GstElement* rtsp_sink = gst_element_factory_make("rtspclientsink", "rtsp_sink");
-    if (!rtsp_sink) throw std::runtime_error("Failed to create rtspclientsink");
-    g_object_set(rtsp_sink, "location", rtsp_url.c_str(), nullptr);
-    gst_bin_add(GST_BIN(pipeline_), rtsp_sink);
+    // MediaMTX ingests on RTMP port 1935 and re-serves at rtsp://host:8554/ds-test
+    std::string rtmp_url = "rtmp://127.0.0.1:1935/ds-test";
+    GstElement* rtmp_sink = gst_element_factory_make("rtmpsink", "rtmp_sink");
+    if (!rtmp_sink) throw std::runtime_error("Failed to create rtmpsink");
+    g_object_set(rtmp_sink, "location", rtmp_url.c_str(), nullptr);
+    gst_bin_add(GST_BIN(pipeline_), rtmp_sink);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
@@ -169,23 +170,10 @@ void DeepStreamPipeline::build() {
         throw std::runtime_error("Failed to link conv_out→caps_out");
     if (!gst_element_link(caps_out, encoder))
         throw std::runtime_error("Failed to link caps_out→encoder");
-    if (!gst_element_link(encoder, rtp_pay))
-        throw std::runtime_error("Failed to link encoder→rtp_pay");
-    // rtspclientsink uses request pads (sink_%u template); gst_element_link_pads
-    // requests and links them while handling caps negotiation internally.
-    if (!gst_element_link_pads(rtp_pay, "src", rtsp_sink, "sink_0")) {
-        // Fallback diagnostic: try raw pad link and print the error code
-        GstPad* pay_src  = gst_element_get_static_pad(rtp_pay, "src");
-        GstPad* sink_pad = gst_element_get_request_pad(rtsp_sink, "sink_0");
-        GstPadLinkReturn lr = sink_pad
-            ? gst_pad_link(pay_src, sink_pad)
-            : GST_PAD_LINK_REFUSED;
-        g_printerr("[pipeline] rtp_pay→rtsp_sink link_pads failed; raw link=%d sink_pad=%p\n",
-            (int)lr, (void*)sink_pad);
-        if (sink_pad) gst_object_unref(sink_pad);
-        gst_object_unref(pay_src);
-        throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
-    }
+    if (!gst_element_link(encoder, flvmux))
+        throw std::runtime_error("Failed to link encoder→flvmux");
+    if (!gst_element_link(flvmux, rtmp_sink))
+        throw std::runtime_error("Failed to link flvmux→rtmp_sink");
 
     add_stage_probe(tiler,    "tiler");
     add_stage_probe(osd,      "osd");
@@ -198,7 +186,7 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test  (served by MediaMTX)\n", RTSP_SERV_PORT);
+    std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
 
 GstPadProbeReturn DeepStreamPipeline::stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer data) {
