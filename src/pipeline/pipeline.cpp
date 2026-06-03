@@ -151,8 +151,10 @@ void DeepStreamPipeline::build() {
     g_object_set(flvmux, "streamable", TRUE, nullptr);
     gst_bin_add(GST_BIN(pipeline_), flvmux);
 
-    // MediaMTX ingests on RTMP port 1935 and re-serves at rtsp://host:8554/ds-test
-    std::string rtmp_url = "rtmp://127.0.0.1:1935/ds-test";
+    // librtmp parses URL as rtmp://host:port/app/streamkey; single path component
+    // (e.g. /ds-test) gives empty streamkey which is rejected. Use /live/ds-test.
+    // MediaMTX creates path "live/ds-test" → rtsp://host:8554/live/ds-test
+    std::string rtmp_url = "rtmp://127.0.0.1:1935/live/ds-test";
     GstElement* rtmp_sink = gst_element_factory_make("rtmpsink", "rtmp_sink");
     if (!rtmp_sink) throw std::runtime_error("Failed to create rtmpsink");
     g_object_set(rtmp_sink, "location", rtmp_url.c_str(), nullptr);
@@ -186,7 +188,7 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
+    std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
 
 GstPadProbeReturn DeepStreamPipeline::stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer data) {
