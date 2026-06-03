@@ -1,15 +1,10 @@
 """
 Fine-tune RF-DETR Nano on the prepared COCO dataset.
 
-Usage:
-  python training/scripts/02_train.py \
-    --data training/dataset/coco \
-    --epochs 100 \
-    --batch 8 \
-    --imgsz 480 \
-    --out training/models
+Usage (run from training/ directory):
+  python scripts/02_train.py --epochs 100 --batch 8
 
-Run 01_prepare_dataset.py first.
+Run scripts/01_prepare_dataset.py first.
 """
 import argparse
 import shutil
@@ -39,12 +34,12 @@ def get_model_class():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", default="training/dataset/coco",
+    parser.add_argument("--data", default="dataset/coco",
                         help="COCO dataset dir with train.json, val.json, images/")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--imgsz", type=int, default=480)
-    parser.add_argument("--out", default="training/models")
+    parser.add_argument("--out", default="models")
     args = parser.parse_args()
 
     data_dir = Path(args.data)

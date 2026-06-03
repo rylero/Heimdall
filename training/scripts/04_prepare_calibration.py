@@ -8,13 +8,8 @@ Preprocessing MUST match the runtime GStreamer/DeepStream pipeline:
   - Normalize: (pixel/255 - mean) / std  with ImageNet mean/std
   - Layout: CHW, dtype float32
 
-Usage:
-  python training/scripts/04_prepare_calibration.py \
-    --data training/dataset/raw/images \
-    --split training/dataset/coco/train.json \
-    --out training/calibration \
-    --n 50 \
-    --imgsz 480
+Usage (run from training/ directory):
+  python scripts/04_prepare_calibration.py --n 50 --imgsz 480
 """
 import argparse
 import json
@@ -40,10 +35,10 @@ def preprocess(img_bgr, imgsz):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", default="training/dataset/raw/images")
-    parser.add_argument("--split", default="training/dataset/coco/train.json",
+    parser.add_argument("--data", default="dataset/raw/images")
+    parser.add_argument("--split", default="dataset/coco/train.json",
                         help="COCO train.json — limits candidates to train split only")
-    parser.add_argument("--out", default="training/calibration")
+    parser.add_argument("--out", default="calibration")
     parser.add_argument("--n", type=int, default=50, help="Number of calibration images")
     parser.add_argument("--imgsz", type=int, default=480)
     parser.add_argument("--seed", type=int, default=42)

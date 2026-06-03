@@ -1,10 +1,9 @@
 """
 Extract Label Studio YOLO export zip and convert to COCO JSON format.
 
-Usage:
-  python training/scripts/01_prepare_dataset.py \
-    --zip "C:/Users/ryan/Downloads/project-5-at-2026-01-17-20-11-0f80986e.zip" \
-    --out training/dataset
+Usage (run from training/ directory):
+  python scripts/01_prepare_dataset.py \
+    --zip "C:/Users/ryan/Downloads/project-5-at-2026-01-17-20-11-0f80986e.zip"
 """
 import argparse
 import json
@@ -95,7 +94,7 @@ def write_split(entries, split_name, coco_dir, categories):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--zip", required=True, help="Path to Label Studio YOLO export zip")
-    parser.add_argument("--out", default="training/dataset", help="Output root directory")
+    parser.add_argument("--out", default="dataset", help="Output root directory")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--val-split", type=float, default=0.2)
     args = parser.parse_args()

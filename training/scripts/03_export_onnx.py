@@ -1,11 +1,8 @@
 """
 Export trained RF-DETR checkpoint to ONNX and print tensor shapes.
 
-Usage:
-  python training/scripts/03_export_onnx.py \
-    --checkpoint training/models/best.pt \
-    --imgsz 480 \
-    --out training/models/rfdetr_nano_480.onnx
+Usage (run from training/ directory):
+  python scripts/03_export_onnx.py
 
 After export, compare printed tensor names/shapes against
 src/models/bbox_parser/rfdetr_parser.cpp before deploying.
@@ -52,9 +49,9 @@ def print_onnx_info(onnx_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", default="training/models/best.pt")
+    parser.add_argument("--checkpoint", default="models/best.pt")
     parser.add_argument("--imgsz", type=int, default=480)
-    parser.add_argument("--out", default="training/models/rfdetr_nano_480.onnx")
+    parser.add_argument("--out", default="models/rfdetr_nano_480.onnx")
     args = parser.parse_args()
 
     ckpt = Path(args.checkpoint)
