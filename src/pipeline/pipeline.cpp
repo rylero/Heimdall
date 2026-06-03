@@ -86,11 +86,10 @@ void DeepStreamPipeline::build() {
     GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
     if (!tiler) throw std::runtime_error("Failed to create nvmultistreamtiler");
     g_object_set(tiler,
-        "rows",                 static_cast<guint>(tiler_rows),
-        "columns",              static_cast<guint>(tiler_cols),
-        "width",                static_cast<guint>(cameras_[0].width  * tiler_cols),
-        "height",               static_cast<guint>(cameras_[0].height * tiler_rows),
-        "num-surfaces-per-frame", static_cast<guint>(cameras_.size()),
+        "rows",    static_cast<guint>(tiler_rows),
+        "columns", static_cast<guint>(tiler_cols),
+        "width",   static_cast<guint>(cameras_[0].width  * tiler_cols),
+        "height",  static_cast<guint>(cameras_[0].height * tiler_rows),
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), tiler);
 
