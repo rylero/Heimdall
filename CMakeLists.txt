@@ -132,8 +132,7 @@ target_link_libraries(mock_robot PRIVATE heimdall_comm libzmq cppzmq)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(GST      gstreamer-1.0)
-    pkg_check_modules(GST_RTSP gst-rtsp-server-1.0)
+    pkg_check_modules(GST gstreamer-1.0)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -167,16 +166,6 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
             ${NVDSGST_META_LIB}
             heimdall_tracker
     )
-
-    # gst-rtsp-server-1.0 — required by pipeline.cpp for GstRtspServer API
-    if(GST_RTSP_FOUND)
-        target_include_directories(heimdall_pipeline PUBLIC ${GST_RTSP_INCLUDE_DIRS})
-        target_link_libraries(heimdall_pipeline PUBLIC ${GST_RTSP_LIBRARIES})
-    else()
-        # pkg-config didn't find it; link by name (installed via libgstrtspserver-1.0-dev)
-        message(STATUS "gst-rtsp-server-1.0 not found via pkg-config — linking by name")
-        target_link_libraries(heimdall_pipeline PUBLIC gstrtspserver-1.0)
-    endif()
 
     # Main executable — full integrated app
     add_executable(heimdall

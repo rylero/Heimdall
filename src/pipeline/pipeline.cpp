@@ -3,8 +3,7 @@
 #include <stdexcept>
 #include <string>
 
-static constexpr int RTSP_SERV_PORT = 8555;
-static constexpr int RTP_PORT       = 5004;  // loopback UDP port between encoder and RTSP relay
+static constexpr int RTSP_SERV_PORT = 8554;
 
 DeepStreamPipeline::DeepStreamPipeline(
     std::vector<CameraConfig> cameras,
@@ -109,46 +108,33 @@ void DeepStreamPipeline::build() {
     g_object_set(osd, "process-mode", 1, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    // Try HW encoder first; fall back to x264enc when nvv4l2h264enc isn't available
-    GstElement* encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
-    GstCaps*    enc_caps = nullptr;
-    if (encoder) {
-        g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
-        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
-    } else {
-        g_printerr("[pipeline] nvv4l2h264enc unavailable, falling back to x264enc\n");
-        encoder = gst_element_factory_make("x264enc", "encoder");
-        if (!encoder) throw std::runtime_error("No H264 encoder available (tried nvv4l2h264enc, x264enc)");
-        // x264enc bitrate is in kbps; 4000 = 4 Mbps
-        g_object_set(encoder, "bitrate", 4000u, nullptr);
-        enc_caps = gst_caps_from_string("video/x-raw,format=I420");
-    }
-    gst_bin_add(GST_BIN(pipeline_), encoder);
-
-    // nvvidconv converts NVMM (from nvdsosd) to system memory for x264enc,
-    // or NVMM→NVMM for nvv4l2h264enc. It uses Tegra BSP, not the x86 CUDA
-    // driver, so the driver-version warning in logs is a false positive on Jetson.
+    // nvvidconv: normalize NVMM output from nvdsosd before nvrtspoutsinkbin
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
     if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
 
-    // Force caps to match what the chosen encoder expects
-    GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
-    if (!caps_out) throw std::runtime_error("Failed to create capsfilter");
-    g_object_set(caps_out, "caps", enc_caps, nullptr);
-    gst_caps_unref(enc_caps);
-    gst_bin_add(GST_BIN(pipeline_), caps_out);
+    // enc-type=0 → nvv4l2h264enc (HW Jetson), enc-type=1 → x264enc (SW fallback)
+    GstElement* test_enc = gst_element_factory_make("nvv4l2h264enc", nullptr);
+    const guint enc_type = test_enc ? 0u : 1u;
+    if (test_enc) {
+        gst_object_unref(test_enc);
+    } else {
+        g_printerr("[pipeline] nvv4l2h264enc unavailable, nvrtspoutsinkbin will use x264enc (enc-type=1)\n");
+    }
 
-    GstElement* rtp_pay = gst_element_factory_make("rtph264pay", "rtp_pay");
-    if (!rtp_pay) throw std::runtime_error("Failed to create rtph264pay");
-    g_object_set(rtp_pay, "config-interval", 1, "pt", 96, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), rtp_pay);
-
-    // Encoded RTP sent to loopback; the RTSP server below re-serves it to clients
-    GstElement* udp_out = gst_element_factory_make("udpsink", "udp_out");
-    if (!udp_out) throw std::runtime_error("Failed to create udpsink");
-    g_object_set(udp_out, "host", "127.0.0.1", "port", RTP_PORT, "sync", FALSE, "async", FALSE, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), udp_out);
+    // nvrtspoutsinkbin: DeepStream-native RTSP output — encoding + RTSP server handled
+    // internally by the container's own GstRTSPServer build, avoiding the ABI mismatch
+    // that occurs when calling GstRTSPServer C API directly from our binary.
+    GstElement* rtsp_out = gst_element_factory_make("nvrtspoutsinkbin", "rtsp_out");
+    if (!rtsp_out) throw std::runtime_error("Failed to create nvrtspoutsinkbin");
+    g_object_set(rtsp_out,
+        "rtsp-port", static_cast<guint>(RTSP_SERV_PORT),
+        "enc-type",  enc_type,
+        "bitrate",   static_cast<guint>(4000000),
+        "sync",      FALSE,
+        "async",     FALSE,
+        nullptr);
+    gst_bin_add(GST_BIN(pipeline_), rtsp_out);
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
@@ -158,69 +144,18 @@ void DeepStreamPipeline::build() {
         throw std::runtime_error("Failed to link tiler→osd");
     if (!gst_element_link(osd, conv_out))
         throw std::runtime_error("Failed to link osd→conv_out");
-    if (!gst_element_link(conv_out, caps_out))
-        throw std::runtime_error("Failed to link conv_out→caps_out");
-    if (!gst_element_link(caps_out, encoder))
-        throw std::runtime_error("Failed to link caps_out→encoder");
-    if (!gst_element_link(encoder, rtp_pay))
-        throw std::runtime_error("Failed to link encoder→rtp_pay");
-    if (!gst_element_link(rtp_pay, udp_out))
-        throw std::runtime_error("Failed to link rtp_pay→udp_out");
+    if (!gst_element_link(conv_out, rtsp_out))
+        throw std::runtime_error("Failed to link conv_out→rtsp_out");
 
-    // Diagnostic probes — track where frames stop flowing between major stages.
-    // [stage] tiler frame N  → infer is working, tiler is receiving
-    // [stage] osd frame N    → tiler is outputting, osd is receiving
-    // [stage] conv_out frame N → osd is outputting, conv_out is receiving
-    // [stage] encoder frame N  → encoder is receiving (caps negotiation succeeded)
-    // If a stage probe stops firing, the element BEFORE it is the bottleneck.
     add_stage_probe(tiler,    "tiler");
     add_stage_probe(osd,      "osd");
     add_stage_probe(conv_out, "conv_out");
-    add_stage_probe(encoder,  "encoder");
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
     GstBus* bus = gst_element_get_bus(pipeline_);
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
-
-    // GstRtspServer uses GLib GSocketListener which sets SO_REUSEADDR — safe to restart
-    rtsp_server_ = gst_rtsp_server_new();
-    gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
-    // Build mount points from scratch and set on server — avoids relying on
-    // gst_rtsp_server_get_mount_points returning a properly reffed pointer
-    // (on deepstream-l4t/GStreamer 1.20 it may not, freeing the object on unref).
-    GstRTSPMountPoints*  mounts  = gst_rtsp_mount_points_new();
-    GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
-    g_printerr("[rtsp] factory=%p G_IS_OBJECT=%d GST_IS_RTSP_MEDIA_FACTORY=%d\n",
-        factory,
-        factory ? (int)G_IS_OBJECT(factory) : -1,
-        factory ? (int)GST_IS_RTSP_MEDIA_FACTORY(factory) : -1);
-    std::string launch =
-        "( udpsrc port=" + std::to_string(RTP_PORT) +
-        " caps=\"application/x-rtp,media=video,clock-rate=90000,encoding-name=H264,payload=96\""
-        " ! rtph264depay ! rtph264pay name=pay0 pt=96 )";
-    gst_rtsp_media_factory_set_launch(factory, launch.c_str());
-    gst_rtsp_media_factory_set_shared(factory, TRUE);
-    g_signal_connect(factory, "media-configure",
-        G_CALLBACK(DeepStreamPipeline::media_configure_cb), nullptr);
-    gst_rtsp_mount_points_add_factory(mounts, "/ds-test", factory);
-    gst_object_unref(factory);
-    gst_rtsp_server_set_mount_points(rtsp_server_, mounts);
-    gst_object_unref(mounts);
-    rtsp_source_id_ = gst_rtsp_server_attach(rtsp_server_, nullptr);
-
-    // Diagnostic: verify factory is reachable immediately after registration.
-    // If factory_check is NULL here, the g_object_ref failure happened inside
-    // add_factory (ABI mismatch between apt gst-rtsp-server headers and runtime .so).
-    {
-        GstRTSPMountPoints* mp = gst_rtsp_server_get_mount_points(rtsp_server_);
-        gint matched = 0;
-        GstRTSPMediaFactory* fc = mp ? gst_rtsp_mount_points_match(mp, "/ds-test", &matched) : nullptr;
-        g_printerr("[rtsp] factory check at startup: mp=%p fc=%p matched=%d\n", mp, fc, matched);
-        if (fc) gst_object_unref(fc);
-        if (mp) gst_object_unref(mp);
-    }
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test\n", RTSP_SERV_PORT);
 }
@@ -245,9 +180,6 @@ void DeepStreamPipeline::add_stage_probe(GstElement* element, const char* stage_
     gst_object_unref(src_pad);
 }
 
-void DeepStreamPipeline::media_configure_cb(GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer) {
-    gst_rtsp_media_set_latency(media, 200);
-}
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
     auto* self = static_cast<DeepStreamPipeline*>(data);
@@ -276,14 +208,6 @@ void DeepStreamPipeline::run() {
 }
 
 void DeepStreamPipeline::stop() {
-    if (rtsp_source_id_) {
-        g_source_remove(rtsp_source_id_);
-        rtsp_source_id_ = 0;
-    }
-    if (rtsp_server_) {
-        gst_object_unref(rtsp_server_);
-        rtsp_server_ = nullptr;
-    }
     if (loop_) {
         g_main_loop_quit(loop_);
         g_main_loop_unref(loop_);
