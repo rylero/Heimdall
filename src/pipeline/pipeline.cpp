@@ -132,12 +132,19 @@ void DeepStreamPipeline::build() {
     if (hw_enc) {
         encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
         if (!encoder) throw std::runtime_error("Failed to create nvv4l2h264enc");
-        g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
+        g_object_set(encoder,
+            "bitrate",     static_cast<guint>(4000000),
+            "idrinterval", static_cast<guint>(30),
+            nullptr);
         enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
     } else {
         encoder  = gst_element_factory_make("x264enc", "encoder");
         if (!encoder) throw std::runtime_error("No H264 encoder available");
-        g_object_set(encoder, "bitrate", 4000u, nullptr);
+        g_object_set(encoder,
+            "bitrate",      4000u,
+            "tune",         0x4u,  // zerolatency
+            "speed-preset", 1u,    // ultrafast
+            nullptr);
         enc_caps = gst_caps_from_string("video/x-raw,format=I420");
     }
     gst_bin_add(GST_BIN(pipeline_), encoder);
@@ -174,7 +181,7 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 600 * GST_MSECOND);
+    gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 500 * GST_MSECOND);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
