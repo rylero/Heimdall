@@ -27,6 +27,7 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           src/pipeline/camera_source.cpp src/pipeline/probe.cpp src/pipeline/pipeline.cpp \
           src/app/heimdall_app.cpp src/main.cpp \
           src/models/bbox_parser/rfdetr_parser.cpp \
+          src/models/bbox_parser/yolo_parser.cpp \
           tools/mock_robot.cpp \
           tests/test_camera_source.cpp tests/test_pipeline_chain.cpp \
           tests/test_kalman.cpp tests/test_pose_estimator.cpp \
