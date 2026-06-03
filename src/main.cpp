@@ -13,8 +13,10 @@ static void shutdown(int) {
 int main() {
     // Pipeline cameras: device path + resolution (for GStreamer source elements)
     std::vector<CameraConfig> pipeline_cameras = {
-        {0, CameraType::USB, "/dev/video0", 640, 480, 100},
-        {1, CameraType::USB, "/dev/video2", 640, 480, 100},
+        {0, CameraType::USB,  "/dev/video0", 640, 480, 100},
+        {1, CameraType::USB,  "/dev/video2", 640, 480, 100},
+        {2, CameraType::TEST, "",            640, 480, 100},
+        {3, CameraType::TEST, "",            640, 480, 100},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
@@ -30,6 +32,20 @@ int main() {
             },
         },
         {   // Camera 1: front-right
+            .intrinsics = {500.f, 500.f, 320.f, 240.f},
+            .extrinsics = {
+                .tx = 0.3f, .ty =  0.1f, .tz = 0.6f,
+                .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+            },
+        },
+        {   // Camera 2: test (mirrors cam 0 pose)
+            .intrinsics = {500.f, 500.f, 320.f, 240.f},
+            .extrinsics = {
+                .tx = 0.3f, .ty = -0.1f, .tz = 0.6f,
+                .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+            },
+        },
+        {   // Camera 3: test (mirrors cam 1 pose)
             .intrinsics = {500.f, 500.f, 320.f, 240.f},
             .extrinsics = {
                 .tx = 0.3f, .ty =  0.1f, .tz = 0.6f,

@@ -28,14 +28,15 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",framerate=" << cfg.fps << "/1";
             break;
         case CameraType::TEST:
-            // Synthetic source for layout testing; pattern cycles through smpte/snow/colors by id.
+            // Synthetic source for load/layout testing; pattern cycles by id.
             // is-live=true required because nvstreammux expects live sources.
-            // capsfilter (quoted) avoids the parser treating "video/x-raw" as element "video" + URI.
+            // nvvidconv converts CPU video/x-raw → NVMM NV12 for nvstreammux.
             ss << "videotestsrc is-live=true pattern=" << (cfg.id % 18)
                << " ! capsfilter caps=\"video/x-raw"
                << ",width="     << cfg.width
                << ",height="    << cfg.height
-               << ",framerate=" << cfg.fps << "/1\"";
+               << ",framerate=" << cfg.fps << "/1\""
+               << " ! nvvidconv";
             break;
         default:
             throw std::invalid_argument("Unknown CameraType");
