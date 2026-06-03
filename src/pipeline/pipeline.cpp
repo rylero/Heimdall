@@ -187,7 +187,10 @@ void DeepStreamPipeline::build() {
     // GstRtspServer uses GLib GSocketListener which sets SO_REUSEADDR — safe to restart
     rtsp_server_ = gst_rtsp_server_new();
     gst_rtsp_server_set_service(rtsp_server_, std::to_string(RTSP_SERV_PORT).c_str());
-    GstRTSPMountPoints*  mounts  = gst_rtsp_server_get_mount_points(rtsp_server_);
+    // Build mount points from scratch and set on server — avoids relying on
+    // gst_rtsp_server_get_mount_points returning a properly reffed pointer
+    // (on deepstream-l4t/GStreamer 1.20 it may not, freeing the object on unref).
+    GstRTSPMountPoints*  mounts  = gst_rtsp_mount_points_new();
     GstRTSPMediaFactory* factory = gst_rtsp_media_factory_new();
     std::string launch =
         "( udpsrc port=" + std::to_string(RTP_PORT) +
@@ -195,12 +198,11 @@ void DeepStreamPipeline::build() {
         " ! rtph264depay ! rtph264pay name=pay0 pt=96 )";
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
-    // Set latency on the media instance (not the factory) via media-configure signal.
-    // gst_rtsp_media_factory_set_latency corrupts the factory on gst 1.20 on Jetson.
     g_signal_connect(factory, "media-configure",
         G_CALLBACK(DeepStreamPipeline::media_configure_cb), nullptr);
     gst_rtsp_mount_points_add_factory(mounts, "/ds-test", factory);
     gst_object_unref(factory);
+    gst_rtsp_server_set_mount_points(rtsp_server_, mounts);
     gst_object_unref(mounts);
     rtsp_source_id_ = gst_rtsp_server_attach(rtsp_server_, nullptr);
 
