@@ -109,16 +109,11 @@ void DeepStreamPipeline::build() {
     g_object_set(osd, "process-mode", 1, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
-    // nvvidconv (not nvvideoconvert) reliably copies NVMM→system memory when
-    // downstream caps request video/x-raw without the NVMM memory feature
-    GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
-    if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
-    gst_bin_add(GST_BIN(pipeline_), conv_out);
-
     // Try HW encoder first; fall back to x264enc when nvv4l2h264enc isn't available
     GstElement* encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
     GstCaps*    enc_caps = nullptr;
-    if (encoder) {
+    const bool  hw_enc   = (encoder != nullptr);
+    if (hw_enc) {
         g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
         enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
     } else {
@@ -130,6 +125,14 @@ void DeepStreamPipeline::build() {
         enc_caps = gst_caps_from_string("video/x-raw,format=I420");
     }
     gst_bin_add(GST_BIN(pipeline_), encoder);
+
+    // HW encoder reads NVMM directly — nvvidconv handles NVMM→NVMM.
+    // SW encoder (x264enc) needs system memory — videoconvert avoids nvvidconv
+    // which requires driver ≥560 and stalls silently on older drivers.
+    const char* conv_name = hw_enc ? "nvvidconv" : "videoconvert";
+    GstElement* conv_out  = gst_element_factory_make(conv_name, "conv_out");
+    if (!conv_out) throw std::runtime_error(std::string("Failed to create ") + conv_name);
+    gst_bin_add(GST_BIN(pipeline_), conv_out);
 
     // Force caps to match what the chosen encoder expects
     GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
@@ -194,6 +197,9 @@ void DeepStreamPipeline::build() {
         " ! rtph264depay ! rtph264pay name=pay0 pt=96 )";
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
+    // udpsrc is a live source; without a latency hint the RTSP server treats
+    // STATE_CHANGE_NO_PREROLL as an error and reports "failed to preroll pipeline".
+    gst_rtsp_media_factory_set_latency(factory, 200);
     gst_rtsp_mount_points_add_factory(mounts, "/ds-test", factory);
     gst_object_unref(factory);
     gst_object_unref(mounts);
