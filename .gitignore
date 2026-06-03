@@ -15,6 +15,15 @@ __pycache__/
 # Runtime data
 web/data/
 
+# Training pipeline — generated data (large, reproducible from zip)
+training/dataset/
+training/calibration/images/
+training/calibration/calib_list.txt
+training/calibration/calib.cache
+training/models/
+*.onnx
+*.trt
+
 # AI assistant artifacts
 context-snapshot.json
 session-log.md
