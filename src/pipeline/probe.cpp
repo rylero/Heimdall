@@ -3,21 +3,28 @@
 #include <nvdsmeta.h>
 #include <cstdio>
 #include <atomic>
+#include <chrono>
 
 static std::atomic<int> s_frame_count{0};
 
 GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointer user_data) {
     auto* cb = static_cast<DetectionCallback*>(user_data);
-    int n = ++s_frame_count;
-    if (n <= 10 || n % 100 == 0)
-        g_printerr("[probe] nvinfer frame %d\n", n);
+    ++s_frame_count;
+
+    // FPS: exponential moving average over the probe's firing cadence
+    static auto  s_last_ts = std::chrono::steady_clock::now();
+    static float s_fps     = 0.f;
+    auto  now = std::chrono::steady_clock::now();
+    float dt  = std::chrono::duration<float>(now - s_last_ts).count();
+    s_last_ts = now;
+    if (dt > 0.f && dt < 1.f)
+        s_fps = s_fps * 0.85f + (1.f / dt) * 0.15f;
 
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
     if (!buf) return GST_PAD_PROBE_OK;
     NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
     if (!batch) return GST_PAD_PROBE_OK;
 
-    // buf_pts is pipeline running time; use as-is for timestamp.
     const GstClockTime base_time = 0;
 
     std::vector<Detection> detections;
@@ -26,6 +33,24 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
         auto* frame = static_cast<NvDsFrameMeta*>(lf->data);
         const uint64_t capture_ns = static_cast<uint64_t>(frame->buf_pts)
                                   + static_cast<uint64_t>(base_time);
+
+        // FPS overlay — one label per frame, top-left corner
+        NvDsDisplayMeta* dmeta = nvds_acquire_display_meta_from_pool(batch);
+        if (dmeta) {
+            dmeta->num_labels = 1;
+            NvOSD_TextParams& txt = dmeta->text_params[0];
+            txt.display_text      = g_strdup_printf("FPS: %.1f  CAM %d",
+                                                     s_fps, frame->source_id);
+            txt.x_offset          = 10;
+            txt.y_offset          = 10;
+            txt.font_params.font_name  = const_cast<gchar*>("Serif Bold");
+            txt.font_params.font_size  = 18;
+            txt.font_params.font_color = {1.f, 1.f, 1.f, 1.f};
+            txt.set_bg_clr             = 1;
+            txt.text_bg_clr            = {0.f, 0.f, 0.f, 0.5f};
+            nvds_add_display_meta_to_frame(frame, dmeta);
+        }
+
         for (auto* lo = frame->obj_meta_list; lo; lo = lo->next) {
             auto* obj = static_cast<NvDsObjectMeta*>(lo->data);
             const auto& r = obj->rect_params;

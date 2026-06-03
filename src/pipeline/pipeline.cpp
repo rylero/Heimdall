@@ -88,8 +88,7 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    // queue decouples nvstreammux's streaming thread from the encoding chain,
-    // preventing any latency-query interaction between the two GstAggregator elements.
+    // queue decouples nvstreammux's streaming thread from the encoding chain.
     GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
     if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
     g_object_set(queue_post_infer,
@@ -99,9 +98,24 @@ void DeepStreamPipeline::build() {
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
+    // Tile all camera streams into a single frame.
+    // rows×columns must accommodate cameras_.size(). Default: 1 row, N columns.
+    const int tiler_cols = static_cast<int>(cameras_.size());
+    const int tiler_rows = 1;
+    GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
+    if (!tiler) throw std::runtime_error("Failed to create nvmultistreamtiler");
+    g_object_set(tiler,
+        "rows",                 static_cast<guint>(tiler_rows),
+        "columns",              static_cast<guint>(tiler_cols),
+        "width",                static_cast<guint>(cameras_[0].width  * tiler_cols),
+        "height",               static_cast<guint>(cameras_[0].height * tiler_rows),
+        "num-surfaces-per-frame", static_cast<guint>(cameras_.size()),
+        nullptr);
+    gst_bin_add(GST_BIN(pipeline_), tiler);
+
     GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
-    g_object_set(osd, "process-mode", 0, nullptr);  // CPU mode: safe on all driver versions
+    g_object_set(osd, "process-mode", 0, nullptr);
     gst_bin_add(GST_BIN(pipeline_), osd);
 
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
@@ -144,18 +158,15 @@ void DeepStreamPipeline::build() {
     g_object_set(rtmp_sink, "location", "rtmp://127.0.0.1:1935/live/ds-test", nullptr);
     gst_bin_add(GST_BIN(pipeline_), rtmp_sink);
 
-    if (!gst_element_link(mux,             infer))          throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer,           queue_post_infer)) throw std::runtime_error("Failed to link infer→queue");
-    if (!gst_element_link(queue_post_infer, osd))            throw std::runtime_error("Failed to link queue→osd");
-    if (!gst_element_link(osd,             conv_out))        throw std::runtime_error("Failed to link osd→conv_out");
-    if (!gst_element_link(conv_out,        caps_out))        throw std::runtime_error("Failed to link conv_out→caps_out");
-    if (!gst_element_link(caps_out,        encoder))         throw std::runtime_error("Failed to link caps_out→encoder");
-    if (!gst_element_link(encoder,         flvmux))          throw std::runtime_error("Failed to link encoder→flvmux");
-    if (!gst_element_link(flvmux,          rtmp_sink))       throw std::runtime_error("Failed to link flvmux→rtmp_sink");
-
-    add_stage_probe(osd,      "osd");
-    add_stage_probe(conv_out, "conv_out");
-    add_stage_probe(encoder,  "encoder");
+    if (!gst_element_link(mux,              infer))            throw std::runtime_error("Failed to link mux→infer");
+    if (!gst_element_link(infer,            queue_post_infer)) throw std::runtime_error("Failed to link infer→queue");
+    if (!gst_element_link(queue_post_infer, tiler))            throw std::runtime_error("Failed to link queue→tiler");
+    if (!gst_element_link(tiler,            osd))              throw std::runtime_error("Failed to link tiler→osd");
+    if (!gst_element_link(osd,              conv_out))         throw std::runtime_error("Failed to link osd→conv_out");
+    if (!gst_element_link(conv_out,         caps_out))         throw std::runtime_error("Failed to link conv_out→caps_out");
+    if (!gst_element_link(caps_out,         encoder))          throw std::runtime_error("Failed to link caps_out→encoder");
+    if (!gst_element_link(encoder,          flvmux))           throw std::runtime_error("Failed to link encoder→flvmux");
+    if (!gst_element_link(flvmux,           rtmp_sink))        throw std::runtime_error("Failed to link flvmux→rtmp_sink");
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
@@ -166,26 +177,6 @@ void DeepStreamPipeline::build() {
     gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 600 * GST_MSECOND);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
-}
-
-GstPadProbeReturn DeepStreamPipeline::stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer data) {
-    auto* sc = static_cast<StageCounter*>(data);
-    ++sc->count;
-    if (sc->count <= 10 || sc->count % 100 == 0)
-        g_printerr("[stage] %s frame %d\n", sc->name, sc->count);
-    return GST_PAD_PROBE_OK;
-}
-
-void DeepStreamPipeline::add_stage_probe(GstElement* element, const char* stage_name) {
-    stage_counters_.push_back({stage_name, 0});
-    StageCounter* sc = &stage_counters_.back();
-    GstPad* src_pad = gst_element_get_static_pad(element, "src");
-    if (!src_pad) {
-        g_printerr("[stage] no src pad on %s — skipping probe\n", stage_name);
-        return;
-    }
-    gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER, stage_probe_cb, sc, nullptr);
-    gst_object_unref(src_pad);
 }
 
 

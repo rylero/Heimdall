@@ -13,20 +13,30 @@ static void shutdown(int) {
 int main() {
     // Pipeline cameras: device path + resolution (for GStreamer source elements)
     std::vector<CameraConfig> pipeline_cameras = {
-        {0, CameraType::USB, "/dev/video0", 640, 480, 120},
+        {0, CameraType::USB, "/dev/video0", 640, 480, 30},
+        {1, CameraType::USB, "/dev/video1", 640, 480, 30},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
     // rotation_from_euler(yaw, pitch, roll):
-    //   yaw=0 -> camera faces robot forward (+X)
+    //   yaw=0  -> camera faces robot forward (+X)
     //   pitch=0.5 -> camera tilted ~28 degrees downward
-    std::vector<CameraParams> pose_cameras = {{
-        .intrinsics = {500.f, 500.f, 320.f, 240.f},
-        .extrinsics = {
-            .tx = 0.3f, .ty = 0.f, .tz = 0.6f,
-            .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+    std::vector<CameraParams> pose_cameras = {
+        {   // Camera 0: front-left
+            .intrinsics = {500.f, 500.f, 320.f, 240.f},
+            .extrinsics = {
+                .tx = 0.3f, .ty = -0.1f, .tz = 0.6f,
+                .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+            },
         },
-    }};
+        {   // Camera 1: front-right
+            .intrinsics = {500.f, 500.f, 320.f, 240.f},
+            .extrinsics = {
+                .tx = 0.3f, .ty =  0.1f, .tz = 0.6f,
+                .R  = rotation_from_euler(0.f, 0.5f, 0.f),
+            },
+        },
+    };
 
     HeimdallApp::Config cfg{
         .pipeline_cameras  = pipeline_cameras,

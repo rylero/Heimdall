@@ -2,14 +2,8 @@
 #include "camera_source.h"
 #include "probe.h"
 #include <gst/gst.h>
-#include <list>
 #include <string>
 #include <vector>
-
-struct StageCounter {
-    const char* name;
-    int         count = 0;
-};
 
 class DeepStreamPipeline {
 public:
@@ -30,9 +24,6 @@ private:
     DetectionCallback         on_detection_;
     GstElement*               pipeline_  = nullptr;
     GMainLoop*                loop_      = nullptr;
-    std::list<StageCounter>   stage_counters_;
 
-    void add_stage_probe(GstElement* element, const char* stage_name);
-    static GstPadProbeReturn stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer);
     static gboolean bus_cb(GstBus*, GstMessage*, gpointer);
 };
