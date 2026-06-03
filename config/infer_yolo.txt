@@ -18,5 +18,5 @@ parse-bbox-func-name=NvDsInferParseCustomYolo
 custom-lib-path=/app/build/src/models/bbox_parser/libyolo_parser.so
 
 [class-attrs-all]
-pre-cluster-threshold=0.5
+pre-cluster-threshold=0.25
 nms-iou-threshold=0.45
