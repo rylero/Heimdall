@@ -171,15 +171,20 @@ void DeepStreamPipeline::build() {
         throw std::runtime_error("Failed to link caps_out→encoder");
     if (!gst_element_link(encoder, rtp_pay))
         throw std::runtime_error("Failed to link encoder→rtp_pay");
-    // rtspclientsink uses request pads (sink_0, sink_1, ...) — must request explicitly
-    {
+    // rtspclientsink uses request pads (sink_%u template); gst_element_link_pads
+    // requests and links them while handling caps negotiation internally.
+    if (!gst_element_link_pads(rtp_pay, "src", rtsp_sink, "sink_0")) {
+        // Fallback diagnostic: try raw pad link and print the error code
         GstPad* pay_src  = gst_element_get_static_pad(rtp_pay, "src");
-        GstPad* sink_pad = gst_element_get_request_pad(rtsp_sink, "send_rtp_sink_0");
-        if (!sink_pad) throw std::runtime_error("Failed to get rtspclientsink send_rtp_sink_0 pad");
-        if (gst_pad_link(pay_src, sink_pad) != GST_PAD_LINK_OK)
-            throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
+        GstPad* sink_pad = gst_element_get_request_pad(rtsp_sink, "sink_0");
+        GstPadLinkReturn lr = sink_pad
+            ? gst_pad_link(pay_src, sink_pad)
+            : GST_PAD_LINK_REFUSED;
+        g_printerr("[pipeline] rtp_pay→rtsp_sink link_pads failed; raw link=%d sink_pad=%p\n",
+            (int)lr, (void*)sink_pad);
+        if (sink_pad) gst_object_unref(sink_pad);
         gst_object_unref(pay_src);
-        gst_object_unref(sink_pad);
+        throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
     }
 
     add_stage_probe(tiler,    "tiler");
