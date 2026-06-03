@@ -195,9 +195,10 @@ void DeepStreamPipeline::build() {
         " ! rtph264depay ! rtph264pay name=pay0 pt=96 )";
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
-    // udpsrc is a live source; without a latency hint the RTSP server treats
-    // STATE_CHANGE_NO_PREROLL as an error and reports "failed to preroll pipeline".
-    gst_rtsp_media_factory_set_latency(factory, 200);
+    // Set latency on the media instance (not the factory) via media-configure signal.
+    // gst_rtsp_media_factory_set_latency corrupts the factory on gst 1.20 on Jetson.
+    g_signal_connect(factory, "media-configure",
+        G_CALLBACK(DeepStreamPipeline::media_configure_cb), nullptr);
     gst_rtsp_mount_points_add_factory(mounts, "/ds-test", factory);
     gst_object_unref(factory);
     gst_object_unref(mounts);
@@ -224,6 +225,10 @@ void DeepStreamPipeline::add_stage_probe(GstElement* element, const char* stage_
     }
     gst_pad_add_probe(src_pad, GST_PAD_PROBE_TYPE_BUFFER, stage_probe_cb, sc, nullptr);
     gst_object_unref(src_pad);
+}
+
+void DeepStreamPipeline::media_configure_cb(GstRTSPMediaFactory*, GstRTSPMedia* media, gpointer) {
+    gst_rtsp_media_set_latency(media, 200);
 }
 
 gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {

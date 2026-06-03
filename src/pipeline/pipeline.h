@@ -38,4 +38,5 @@ private:
     void add_stage_probe(GstElement* element, const char* stage_name);
     static GstPadProbeReturn stage_probe_cb(GstPad*, GstPadProbeInfo*, gpointer);
     static gboolean bus_cb(GstBus*, GstMessage*, gpointer);
+    static void media_configure_cb(GstRTSPMediaFactory*, GstRTSPMedia*, gpointer);
 };

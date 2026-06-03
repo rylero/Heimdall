@@ -17,11 +17,8 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
     NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
     if (!batch) return GST_PAD_PROBE_OK;
 
-    // Convert buf_pts (pipeline running time) → CLOCK_MONOTONIC absolute time.
-    // base_time is set when the pipeline transitions to PLAYING and stays constant.
-    GstElement* parent = gst_pad_get_parent_element(pad);
-    const GstClockTime base_time = parent ? gst_element_get_base_time(parent) : 0;
-    if (parent) gst_object_unref(parent);
+    // buf_pts is pipeline running time; use as-is for timestamp.
+    const GstClockTime base_time = 0;
 
     std::vector<Detection> detections;
 
