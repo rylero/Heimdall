@@ -80,7 +80,8 @@ def main():
         tensor = preprocess(img, args.imgsz)
         out_file = out_dir / (img_path.stem + ".npy")
         np.save(str(out_file), tensor)
-        saved_paths.append(str(out_file.resolve()))
+        # Store relative path with forward slashes so calib_list.txt is portable across machines
+        saved_paths.append(f"images/{out_file.name}")
 
     list_file = Path(args.out) / "calib_list.txt"
     list_file.write_text("\n".join(saved_paths) + "\n")

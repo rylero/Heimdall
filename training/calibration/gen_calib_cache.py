@@ -39,7 +39,12 @@ def main():
     if not list_file.exists():
         print(f"ERROR: {list_file} not found. Copy calibration/ from Windows training machine.")
         sys.exit(1)
-    image_paths = [p.strip() for p in list_file.read_text().splitlines() if p.strip()]
+    # Resolve paths relative to the list file's directory (supports portable relative paths)
+    calib_dir = list_file.parent
+    image_paths = [
+        str((calib_dir / p.strip()).resolve()) if not Path(p.strip()).is_absolute() else p.strip()
+        for p in list_file.read_text().splitlines() if p.strip()
+    ]
     print(f"Calibration images: {len(image_paths)}")
 
     class Int8Calibrator(trt.IInt8EntropyCalibrator2):
