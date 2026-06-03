@@ -206,6 +206,18 @@ void DeepStreamPipeline::build() {
     gst_object_unref(mounts);
     rtsp_source_id_ = gst_rtsp_server_attach(rtsp_server_, nullptr);
 
+    // Diagnostic: verify factory is reachable immediately after registration.
+    // If factory_check is NULL here, the g_object_ref failure happened inside
+    // add_factory (ABI mismatch between apt gst-rtsp-server headers and runtime .so).
+    {
+        GstRTSPMountPoints* mp = gst_rtsp_server_get_mount_points(rtsp_server_);
+        gint matched = 0;
+        GstRTSPMediaFactory* fc = mp ? gst_rtsp_mount_points_match(mp, "/ds-test", &matched) : nullptr;
+        g_printerr("[rtsp] factory check at startup: mp=%p fc=%p matched=%d\n", mp, fc, matched);
+        if (fc) gst_object_unref(fc);
+        if (mp) gst_object_unref(mp);
+    }
+
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/ds-test\n", RTSP_SERV_PORT);
 }
 
