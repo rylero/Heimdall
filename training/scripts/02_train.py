@@ -47,7 +47,7 @@ def main():
     checkpoints_dir = out_dir / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
-    for required in ["train.json", "val.json", "images"]:
+    for required in ["train/_annotations.coco.json", "valid/_annotations.coco.json"]:
         if not (data_dir / required).exists():
             print(f"ERROR: {data_dir / required} not found. Run 01_prepare_dataset.py first.")
             sys.exit(1)
