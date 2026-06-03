@@ -171,8 +171,16 @@ void DeepStreamPipeline::build() {
         throw std::runtime_error("Failed to link caps_out→encoder");
     if (!gst_element_link(encoder, rtp_pay))
         throw std::runtime_error("Failed to link encoder→rtp_pay");
-    if (!gst_element_link(rtp_pay, rtsp_sink))
-        throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
+    // rtspclientsink uses request pads (sink_0, sink_1, ...) — must request explicitly
+    {
+        GstPad* pay_src  = gst_element_get_static_pad(rtp_pay, "src");
+        GstPad* sink_pad = gst_element_get_request_pad(rtsp_sink, "sink_0");
+        if (!sink_pad) throw std::runtime_error("Failed to get rtspclientsink sink_0 pad");
+        if (gst_pad_link(pay_src, sink_pad) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link rtp_pay→rtsp_sink");
+        gst_object_unref(pay_src);
+        gst_object_unref(sink_pad);
+    }
 
     add_stage_probe(tiler,    "tiler");
     add_stage_probe(osd,      "osd");
