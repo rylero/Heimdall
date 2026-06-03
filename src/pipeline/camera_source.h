@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-enum class CameraType { USB, CSI };
+enum class CameraType { USB, CSI, TEST };
 
 struct CameraConfig {
     int         id;

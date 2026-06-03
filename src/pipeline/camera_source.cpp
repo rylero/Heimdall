@@ -26,6 +26,14 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",format=NV12"
                << ",framerate=" << cfg.fps << "/1";
             break;
+        case CameraType::TEST:
+            // Synthetic source for layout testing; pattern cycles through smpte/snow/colors by id
+            ss << "videotestsrc pattern=" << (cfg.id % 18)
+               << " ! video/x-raw"
+               << ",width="     << cfg.width
+               << ",height="    << cfg.height
+               << ",framerate=" << cfg.fps << "/1";
+            break;
         default:
             throw std::invalid_argument("Unknown CameraType");
     }

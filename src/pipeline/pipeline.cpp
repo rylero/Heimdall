@@ -98,10 +98,9 @@ void DeepStreamPipeline::build() {
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
-    // Tile all camera streams into a single frame.
-    // rows×columns must accommodate cameras_.size(). Default: 1 row, N columns.
-    const int tiler_cols = static_cast<int>(cameras_.size());
-    const int tiler_rows = 1;
+    // Tile all camera streams into a roughly square grid.
+    const int tiler_cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(cameras_.size()))));
+    const int tiler_rows = static_cast<int>(std::ceil(static_cast<double>(cameras_.size()) / tiler_cols));
     GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
     if (!tiler) throw std::runtime_error("Failed to create nvmultistreamtiler");
     g_object_set(tiler,
