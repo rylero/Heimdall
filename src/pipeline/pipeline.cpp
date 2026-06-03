@@ -88,18 +88,11 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    guint tiler_rows = static_cast<guint>(std::ceil(std::sqrt(cameras_.size())));
-    guint tiler_cols = static_cast<guint>(
-        std::ceil(static_cast<double>(cameras_.size()) / tiler_rows));
-    GstElement* tiler = gst_element_factory_make("nvmultistreamtiler", "tiler");
-    if (!tiler) throw std::runtime_error("Failed to create nvmultistreamtiler");
-    g_object_set(tiler,
-        "rows",    tiler_rows,
-        "columns", tiler_cols,
-        "width",   cameras_[0].width  * tiler_cols,
-        "height",  cameras_[0].height * tiler_rows,
-        nullptr);
-    gst_bin_add(GST_BIN(pipeline_), tiler);
+    // nvmultistreamtiler initializes num_streams=0 in decide_allocation when
+    // downstream doesn't carry DeepStream allocation fields — causes silent buffer
+    // drop. For single-camera use it's a 1×1 passthrough with no benefit; skip it.
+    // Multi-camera: re-add tiler here when needed.
+    GstElement* tiler = nullptr;
 
     GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
     if (!osd) throw std::runtime_error("Failed to create nvdsosd");
@@ -160,10 +153,8 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, tiler))
-        throw std::runtime_error("Failed to link infer→tiler");
-    if (!gst_element_link(tiler, osd))
-        throw std::runtime_error("Failed to link tiler→osd");
+    if (!gst_element_link(infer, osd))
+        throw std::runtime_error("Failed to link infer→osd");
     if (!gst_element_link(osd, conv_out))
         throw std::runtime_error("Failed to link osd→conv_out");
     if (!gst_element_link(conv_out, caps_out))
@@ -175,7 +166,6 @@ void DeepStreamPipeline::build() {
     if (!gst_element_link(flvmux, rtmp_sink))
         throw std::runtime_error("Failed to link flvmux→rtmp_sink");
 
-    add_stage_probe(tiler,    "tiler");
     add_stage_probe(osd,      "osd");
     add_stage_probe(conv_out, "conv_out");
     add_stage_probe(encoder,  "encoder");
@@ -191,19 +181,6 @@ void DeepStreamPipeline::build() {
     // before caps are fixed — they can stall indefinitely on a failed query.
     // Setting explicit pipeline latency overrides the failed query and unblocks them.
     gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 200 * GST_MSECOND);
-
-    // Diagnostic: confirm buffer enters tiler (if this fires but tiler src probe
-    // doesn't, the stall is inside tiler; if this doesn't fire, it's between infer and tiler)
-    GstPad* tiler_sink_pad = gst_element_get_static_pad(tiler, "sink");
-    if (tiler_sink_pad) {
-        gst_pad_add_probe(tiler_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-            [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
-                static int n = 0;
-                if (++n <= 5) g_printerr("[diag] tiler sink frame %d\n", n);
-                return GST_PAD_PROBE_OK;
-            }, nullptr, nullptr);
-        gst_object_unref(tiler_sink_pad);
-    }
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
 }
