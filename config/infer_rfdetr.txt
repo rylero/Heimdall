@@ -4,6 +4,7 @@ gpu-id=0
 # mean=[123.675, 116.28, 103.53]  std≈57.63 (avg of 58.395, 57.12, 57.375)
 net-scale-factor=0.017352074816046
 offsets=123.675;116.28;103.53
+onnx-file=/app/models/rfdetr_nano_480.onnx
 model-engine-file=/app/models/rfdetr_nano_480_int8.trt
 labelfile-path=/app/models/labels.txt
 input-dims=3;480;480;0
