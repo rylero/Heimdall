@@ -93,6 +93,14 @@ TEST_CASE("try_recv_pose receives and deserializes robot pose", "[comm]") {
     REQUIRE(result->jetson_recv_ns > 0);
 }
 
+TEST_CASE("send_frame does not block or throw when no receiver is connected", "[comm]") {
+    // Regression: send_frame previously used send_flags::none which blocks indefinitely
+    // when no PULL socket is connected, stalling the GStreamer streaming thread.
+    CommLayer comm({"inproc://pose_norecv", "inproc://out_norecv", ""});
+    TrackedObject obj{1, 0, 0.f, 0.f, 0.f, 0.f, 0.f};
+    REQUIRE_NOTHROW(comm.send_frame({TrackEvent{TrackEventType::CONFIRMED, obj}}, 1ULL, true));
+}
+
 TEST_CASE("send_frame serializes and delivers detection frame", "[comm]") {
     CommLayer comm({"inproc://pose_send", "inproc://out_send", ""});
 
