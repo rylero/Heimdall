@@ -70,6 +70,10 @@ def main():
         weight_type=QuantType.QInt8,
         per_channel=False,          # per-tensor; TRT 10.x handles this better
         reduce_range=False,
+        extra_options={
+            "ActivationSymmetric": True,   # zero_point=0 (INT8), avoids TRT UINT8 QDQ rejection
+            "WeightSymmetric": True,
+        },
     )
 
     if qdq_path.exists():
