@@ -88,89 +88,11 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    // queue creates a thread boundary between nvstreammux's output thread (which drives
-    // nvinfer) and the encoding chain (which feeds flvmux, another GstAggregator).
-    // Without this, flvmux's latency query propagates upstream on nvstreammux's thread
-    // while nvstreammux holds its own lock — deadlock. DeepStream reference pipelines
-    // always queue between major stages for exactly this reason.
-    GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
-    if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
-    g_object_set(queue_post_infer, "max-size-buffers", 4u, "max-size-bytes", 0u, "max-size-time", guint64(0), nullptr);
-    gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
-
-    // Probe queue sink: did nvinfer's push actually complete and enter the queue?
-    {
-        GstPad* q_sink = gst_element_get_static_pad(queue_post_infer, "sink");
-        if (q_sink) {
-            gst_pad_add_probe(q_sink, GST_PAD_PROBE_TYPE_BUFFER,
-                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
-                    static int n = 0;
-                    if (++n <= 5) g_printerr("[diag] queue sink frame %d\n", n);
-                    return GST_PAD_PROBE_OK;
-                }, nullptr, nullptr);
-            gst_object_unref(q_sink);
-        }
-    }
-
-    // nvvidconv: convert NVMM output from nvinfer to the format the encoder expects
-    GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
-    if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
-    gst_bin_add(GST_BIN(pipeline_), conv_out);
-
-    // Probe conv_out sink: did the queue's output thread successfully push to nvvidconv?
-    {
-        GstPad* cv_sink = gst_element_get_static_pad(conv_out, "sink");
-        if (cv_sink) {
-            gst_pad_add_probe(cv_sink, GST_PAD_PROBE_TYPE_BUFFER,
-                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
-                    static int n = 0;
-                    if (++n <= 5) g_printerr("[diag] conv_out sink frame %d\n", n);
-                    return GST_PAD_PROBE_OK;
-                }, nullptr, nullptr);
-            gst_object_unref(cv_sink);
-        }
-    }
-
-    // Choose encoder based on HW availability
-    GstElement* test_enc = gst_element_factory_make("nvv4l2h264enc", nullptr);
-    const bool  hw_enc   = (test_enc != nullptr);
-    if (test_enc) {
-        gst_object_unref(test_enc);
-    } else {
-        g_printerr("[pipeline] nvv4l2h264enc unavailable, using x264enc\n");
-    }
-
-    GstElement* encoder;
-    GstCaps*    enc_caps;
-    if (hw_enc) {
-        encoder  = gst_element_factory_make("nvv4l2h264enc", "encoder");
-        if (!encoder) throw std::runtime_error("Failed to create nvv4l2h264enc");
-        g_object_set(encoder, "bitrate", static_cast<guint>(4000000), nullptr);
-        enc_caps = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12");
-    } else {
-        encoder  = gst_element_factory_make("x264enc", "encoder");
-        if (!encoder) throw std::runtime_error("No H264 encoder available");
-        g_object_set(encoder, "bitrate", 4000u, nullptr);  // kbps
-        enc_caps = gst_caps_from_string("video/x-raw,format=I420");
-    }
-    gst_bin_add(GST_BIN(pipeline_), encoder);
-
-    GstElement* caps_out = gst_element_factory_make("capsfilter", "caps_out");
-    if (!caps_out) throw std::runtime_error("Failed to create capsfilter");
-    g_object_set(caps_out, "caps", enc_caps, nullptr);
-    gst_caps_unref(enc_caps);
-    gst_bin_add(GST_BIN(pipeline_), caps_out);
-
-    // flvmux wraps H264 in FLV for RTMP publishing.
-    // rtspclientsink pad caps are deferred until server connection (NOFORMAT in NULL
-    // state); RTMP publish avoids that issue — rtmpsink has a plain static sink pad.
-    GstElement* flvmux = gst_element_factory_make("flvmux", "flvmux");
-    if (!flvmux) throw std::runtime_error("Failed to create flvmux");
-    g_object_set(flvmux, "streamable", TRUE, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), flvmux);
-
-    // TEST: fakesink to verify DeepStream pipeline produces output independent of RTMP.
-    // If stage probes fire with this sink, swap back to rtmpsink.
+    // ISOLATION: bare fakesink directly after infer — no queue, no encoder, no flvmux.
+    // Goal: confirm whether nvinfer's output thread pushes multiple frames (2, 3, 4...)
+    // or stalls after frame 1.
+    //   Multiple frames → nvinfer is healthy; stall is in downstream delivery/caps.
+    //   Only frame 1    → stall is inside nvinfer's output thread itself.
     GstElement* rtmp_sink = gst_element_factory_make("fakesink", "rtmp_sink");
     if (!rtmp_sink) throw std::runtime_error("Failed to create fakesink");
     g_object_set(rtmp_sink, "sync", FALSE, nullptr);
@@ -178,21 +100,8 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, queue_post_infer))
-        throw std::runtime_error("Failed to link infer→queue");
-    if (!gst_element_link(queue_post_infer, conv_out))
-        throw std::runtime_error("Failed to link queue→conv_out");
-    if (!gst_element_link(conv_out, caps_out))
-        throw std::runtime_error("Failed to link conv_out→caps_out");
-    if (!gst_element_link(caps_out, encoder))
-        throw std::runtime_error("Failed to link caps_out→encoder");
-    if (!gst_element_link(encoder, flvmux))
-        throw std::runtime_error("Failed to link encoder→flvmux");
-    if (!gst_element_link(flvmux, rtmp_sink))
-        throw std::runtime_error("Failed to link flvmux→rtmp_sink");
-
-    add_stage_probe(conv_out, "conv_out");
-    add_stage_probe(encoder,  "encoder");
+    if (!gst_element_link(infer, rtmp_sink))
+        throw std::runtime_error("Failed to link infer→fakesink");
 
     GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline_), GST_DEBUG_GRAPH_SHOW_ALL, "heimdall-pipeline");
 
@@ -200,10 +109,6 @@ void DeepStreamPipeline::build() {
     gst_bus_add_watch(bus, bus_cb, this);
     gst_object_unref(bus);
 
-    // v4l2src can't report latency until caps are negotiated, but GstAggregator
-    // subclasses (nvmultistreamtiler, flvmux) query latency during state transitions
-    // before caps are fixed — they can stall indefinitely on a failed query.
-    // Setting explicit pipeline latency overrides the failed query and unblocks them.
     gst_pipeline_set_latency(GST_PIPELINE(pipeline_), 200 * GST_MSECOND);
 
     std::printf("RTSP stream: rtsp://0.0.0.0:%d/live/ds-test  (MediaMTX ingests RTMP on :1935)\n", RTSP_SERV_PORT);
