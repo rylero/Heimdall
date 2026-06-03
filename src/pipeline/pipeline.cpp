@@ -98,10 +98,38 @@ void DeepStreamPipeline::build() {
     g_object_set(queue_post_infer, "max-size-buffers", 4u, "max-size-bytes", 0u, "max-size-time", guint64(0), nullptr);
     gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
+    // Probe queue sink: did nvinfer's push actually complete and enter the queue?
+    {
+        GstPad* q_sink = gst_element_get_static_pad(queue_post_infer, "sink");
+        if (q_sink) {
+            gst_pad_add_probe(q_sink, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                    static int n = 0;
+                    if (++n <= 5) g_printerr("[diag] queue sink frame %d\n", n);
+                    return GST_PAD_PROBE_OK;
+                }, nullptr, nullptr);
+            gst_object_unref(q_sink);
+        }
+    }
+
     // nvvidconv: convert NVMM output from nvinfer to the format the encoder expects
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
     if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
+
+    // Probe conv_out sink: did the queue's output thread successfully push to nvvidconv?
+    {
+        GstPad* cv_sink = gst_element_get_static_pad(conv_out, "sink");
+        if (cv_sink) {
+            gst_pad_add_probe(cv_sink, GST_PAD_PROBE_TYPE_BUFFER,
+                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
+                    static int n = 0;
+                    if (++n <= 5) g_printerr("[diag] conv_out sink frame %d\n", n);
+                    return GST_PAD_PROBE_OK;
+                }, nullptr, nullptr);
+            gst_object_unref(cv_sink);
+        }
+    }
 
     // Choose encoder based on HW availability
     GstElement* test_enc = gst_element_factory_make("nvv4l2h264enc", nullptr);
