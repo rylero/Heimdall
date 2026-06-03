@@ -34,7 +34,7 @@ trtexec \
     --onnx="$QDQ_ONNX" \
     --fp16 \
     --saveEngine="$ENGINE" \
-    --workspace=4096
+    --memPoolSize=workspace:4096M
 
 echo ""
 echo "Done: $ENGINE"
