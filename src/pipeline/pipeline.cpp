@@ -88,35 +88,12 @@ void DeepStreamPipeline::build() {
         detection_probe_cb, &on_detection_, nullptr);
     gst_object_unref(infer_src);
 
-    // nvmultistreamtiler initializes num_streams=0 in decide_allocation when
-    // downstream doesn't carry DeepStream allocation fields — causes silent buffer
-    // drop. For single-camera use it's a 1×1 passthrough with no benefit; skip it.
-    // Multi-camera: re-add tiler here when needed.
-    GstElement* tiler = nullptr;
+    // ISOLATION TEST: osd sink probe never fires — infer→osd push blocks.
+    // Bypass nvdsosd to confirm it is the stall; re-add after base pipeline works.
+    // If [stage] conv_out frame 1 fires → osd is the block.
+    // If no stage probes → stall is in nvinfer push or caps negotiation with nvvidconv.
 
-    GstElement* osd = gst_element_factory_make("nvdsosd", "osd");
-    if (!osd) throw std::runtime_error("Failed to create nvdsosd");
-    // process-mode=0 (CPU): safe with driver 540 on Jetson — avoids raw CUDA kernels
-    // that may hang on the 540→560 driver mismatch. Slower but correct.
-    // process-mode=1 (GPU/CUDA) stalls: CUDA kernel hangs silently on driver mismatch.
-    g_object_set(osd, "process-mode", 0, nullptr);
-    gst_bin_add(GST_BIN(pipeline_), osd);
-
-    // Diagnostic: confirm buffer enters osd at all
-    {
-        GstPad* osd_sink = gst_element_get_static_pad(osd, "sink");
-        if (osd_sink) {
-            gst_pad_add_probe(osd_sink, GST_PAD_PROBE_TYPE_BUFFER,
-                [](GstPad*, GstPadProbeInfo*, gpointer) -> GstPadProbeReturn {
-                    static int n = 0;
-                    if (++n <= 5) g_printerr("[diag] osd sink frame %d\n", n);
-                    return GST_PAD_PROBE_OK;
-                }, nullptr, nullptr);
-            gst_object_unref(osd_sink);
-        }
-    }
-
-    // nvvidconv: convert NVMM output from nvdsosd to the format the encoder expects
+    // nvvidconv: convert NVMM output from nvinfer to the format the encoder expects
     GstElement* conv_out = gst_element_factory_make("nvvidconv", "conv_out");
     if (!conv_out) throw std::runtime_error("Failed to create nvvidconv");
     gst_bin_add(GST_BIN(pipeline_), conv_out);
@@ -168,10 +145,8 @@ void DeepStreamPipeline::build() {
 
     if (!gst_element_link(mux, infer))
         throw std::runtime_error("Failed to link mux→infer");
-    if (!gst_element_link(infer, osd))
-        throw std::runtime_error("Failed to link infer→osd");
-    if (!gst_element_link(osd, conv_out))
-        throw std::runtime_error("Failed to link osd→conv_out");
+    if (!gst_element_link(infer, conv_out))
+        throw std::runtime_error("Failed to link infer→conv_out");
     if (!gst_element_link(conv_out, caps_out))
         throw std::runtime_error("Failed to link conv_out→caps_out");
     if (!gst_element_link(caps_out, encoder))
@@ -181,7 +156,6 @@ void DeepStreamPipeline::build() {
     if (!gst_element_link(flvmux, rtmp_sink))
         throw std::runtime_error("Failed to link flvmux→rtmp_sink");
 
-    add_stage_probe(osd,      "osd");
     add_stage_probe(conv_out, "conv_out");
     add_stage_probe(encoder,  "encoder");
 
