@@ -60,20 +60,31 @@ def main():
         sys.exit(1)
 
     out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = out_path.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     ModelClass = get_model_class()
     model = ModelClass(pretrain_weights=str(ckpt), resolution=args.imgsz)
 
-    print(f"Exporting ONNX -> {out_path}")
-    model.export(format="onnx", output_path=str(out_path))
+    print(f"Exporting ONNX -> {out_dir}/")
+    # export() takes output_dir (directory) and returns the Path of the exported file
+    exported = model.export(
+        format="onnx",
+        output_dir=str(out_dir),
+        shape=(args.imgsz, args.imgsz),
+    )
 
-    if out_path.exists():
-        print_onnx_info(out_path)
-        print(f"Export complete: {out_path}")
+    # Rename to the expected filename if rfdetr chose a different name
+    exported = Path(exported)
+    if exported != out_path:
+        exported.rename(out_path)
+        exported = out_path
+
+    if exported.exists():
+        print_onnx_info(exported)
+        print(f"Export complete: {exported}")
     else:
-        print(f"WARNING: Export method did not produce {out_path}.")
-        print("Check rfdetr documentation for the correct export API in your installed version.")
+        print(f"WARNING: Export did not produce {exported}.")
 
 
 if __name__ == "__main__":
