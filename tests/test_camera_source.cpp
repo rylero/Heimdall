@@ -15,12 +15,13 @@ TEST_CASE("USB source contains resolution", "[camera]") {
     REQUIRE(s.find("height=480") != std::string::npos);
 }
 
-TEST_CASE("USB source uses hardware MJPEG decoder", "[camera]") {
+TEST_CASE("USB source uses hardware MJPEG decoder with NV12 output", "[camera]") {
     CameraConfig cfg{0, CameraType::USB, "/dev/video0", 640, 480, 100};
     auto s = build_source_description(cfg);
     REQUIRE(s.find("nvv4l2decoder") != std::string::npos);
     REQUIRE(s.find("mjpeg=1") != std::string::npos);
     REQUIRE(s.find("jpegdec") == std::string::npos);
+    REQUIRE(s.find("format=NV12") != std::string::npos);
 }
 
 TEST_CASE("CSI source contains nvarguscamerasrc and sensor-id", "[camera]") {
