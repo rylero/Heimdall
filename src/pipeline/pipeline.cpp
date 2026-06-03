@@ -2,6 +2,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 static constexpr int RTSP_SERV_PORT = 8554;
 
@@ -35,7 +36,17 @@ void DeepStreamPipeline::build() {
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), mux);
 
+    // camera_id → tee element, populated for cameras that have at least one mirror
+    std::unordered_map<int, GstElement*> tees;
+
+    // First pass: build source bins for real cameras; insert tee if any camera mirrors them
     for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
+        if (cameras_[i].mirror_of >= 0) continue;
+
+        bool needs_tee = false;
+        for (auto& c : cameras_)
+            if (c.mirror_of == cameras_[i].id) { needs_tee = true; break; }
+
         GError* err = nullptr;
         GstElement* src = gst_parse_bin_from_description(
             build_source_description(cameras_[i]).c_str(), TRUE, &err);
@@ -47,15 +58,51 @@ void DeepStreamPipeline::build() {
         gst_element_set_name(src, ("src_" + std::to_string(i)).c_str());
         gst_bin_add(GST_BIN(pipeline_), src);
 
-        GstPad* src_pad  = gst_element_get_static_pad(src, "src");
-        if (!src_pad) throw std::runtime_error("Source bin has no 'src' ghost pad for camera " + std::to_string(i));
+        GstPad* out_pad;
+        if (needs_tee) {
+            GstElement* tee = gst_element_factory_make("tee", ("tee_" + std::to_string(cameras_[i].id)).c_str());
+            if (!tee) throw std::runtime_error("Failed to create tee for camera " + std::to_string(i));
+            gst_bin_add(GST_BIN(pipeline_), tee);
+
+            GstPad* src_ghost = gst_element_get_static_pad(src, "src");
+            GstPad* tee_sink  = gst_element_get_static_pad(tee, "sink");
+            if (gst_pad_link(src_ghost, tee_sink) != GST_PAD_LINK_OK)
+                throw std::runtime_error("Failed to link src to tee for camera " + std::to_string(i));
+            gst_object_unref(src_ghost);
+            gst_object_unref(tee_sink);
+
+            tees[cameras_[i].id] = tee;
+            out_pad = gst_element_get_request_pad(tee, "src_%u");
+        } else {
+            out_pad = gst_element_get_static_pad(src, "src");
+        }
+
+        if (!out_pad) throw std::runtime_error("No output pad for camera " + std::to_string(i));
         GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
         if (!mux_sink) throw std::runtime_error("Failed to get mux sink pad for camera " + std::to_string(i));
-
-        // USB (nvv4l2decoder) and CSI both output NVMM; link directly to mux
-        if (gst_pad_link(src_pad, mux_sink) != GST_PAD_LINK_OK)
+        if (gst_pad_link(out_pad, mux_sink) != GST_PAD_LINK_OK)
             throw std::runtime_error("Failed to link src to mux for camera " + std::to_string(i));
-        gst_object_unref(src_pad);
+        gst_object_unref(out_pad);
+        gst_object_unref(mux_sink);
+    }
+
+    // Second pass: link mirror cameras from their source's tee
+    for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
+        if (cameras_[i].mirror_of < 0) continue;
+
+        auto it = tees.find(cameras_[i].mirror_of);
+        if (it == tees.end())
+            throw std::runtime_error("Mirror camera " + std::to_string(i) +
+                " references camera " + std::to_string(cameras_[i].mirror_of) +
+                " which has no tee — check mirror_of ids");
+
+        GstPad* tee_src  = gst_element_get_request_pad(it->second, "src_%u");
+        GstPad* mux_sink = gst_element_get_request_pad(mux, ("sink_" + std::to_string(i)).c_str());
+        if (!tee_src || !mux_sink)
+            throw std::runtime_error("Failed to get pads for mirror camera " + std::to_string(i));
+        if (gst_pad_link(tee_src, mux_sink) != GST_PAD_LINK_OK)
+            throw std::runtime_error("Failed to link tee to mux for mirror camera " + std::to_string(i));
+        gst_object_unref(tee_src);
         gst_object_unref(mux_sink);
     }
 

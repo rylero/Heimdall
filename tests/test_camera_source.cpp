@@ -41,6 +41,13 @@ TEST_CASE("TEST source uses videotestsrc with nvvidconv for NVMM output", "[came
     REQUIRE(s.find("height=480") != std::string::npos);
 }
 
+TEST_CASE("Mirror camera has mirror_of set to source id", "[camera]") {
+    CameraConfig real{.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=100};
+    CameraConfig mirror{.id=2, .type=CameraType::USB, .device="", .width=640, .height=480, .fps=100, .mirror_of=0};
+    REQUIRE(real.mirror_of == -1);
+    REQUIRE(mirror.mirror_of == 0);
+}
+
 TEST_CASE("Unknown type throws invalid_argument", "[camera]") {
     CameraConfig cfg{0, static_cast<CameraType>(99), "/dev/video0"};
     REQUIRE_THROWS_AS(build_source_description(cfg), std::invalid_argument);

@@ -13,10 +13,10 @@ static void shutdown(int) {
 int main() {
     // Pipeline cameras: device path + resolution (for GStreamer source elements)
     std::vector<CameraConfig> pipeline_cameras = {
-        {0, CameraType::USB,  "/dev/video0", 640, 480, 100},
-        {1, CameraType::USB,  "/dev/video2", 640, 480, 100},
-        {2, CameraType::TEST, "",            640, 480, 100},
-        {3, CameraType::TEST, "",            640, 480, 100},
+        {.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=100},
+        {.id=1, .type=CameraType::USB, .device="/dev/video2", .width=640, .height=480, .fps=100},
+        {.id=2, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=0},
+        {.id=3, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=1},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
