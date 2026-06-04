@@ -10,6 +10,19 @@ if(TARGET heimdall_pipeline)
     )
     include(Catch)
     catch_discover_tests(heimdall_tests)
+
+    add_executable(heimdall_parser_tests
+        test_yolo_parser.cpp
+    )
+    target_link_libraries(heimdall_parser_tests
+        yolo_parser
+        Catch2::Catch2WithMain
+    )
+    target_include_directories(heimdall_parser_tests PRIVATE
+        "${DS_ROOT}/sources/includes"
+        ${CUDA_INCLUDE_DIRS}
+    )
+    catch_discover_tests(heimdall_parser_tests)
 endif()
 
 # Tracker tests — no hardware dependency, run on any machine

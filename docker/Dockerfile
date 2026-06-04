@@ -30,6 +30,7 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           src/models/bbox_parser/yolo_parser.cpp \
           tools/mock_robot.cpp \
           tests/test_camera_source.cpp tests/test_pipeline_chain.cpp \
+          tests/test_yolo_parser.cpp \
           tests/test_kalman.cpp tests/test_pose_estimator.cpp \
           tests/test_comm_layer.cpp tests/test_jpda.cpp tests/test_tracker.cpp \
           tests/test_pose_buffer.cpp
