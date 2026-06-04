@@ -9,6 +9,7 @@ model-engine-file=/app/models/fuel_640.onnx_b2_gpu0_fp16.engine
 labelfile-path=/app/models/labels.txt
 infer-dims=3;640;640
 batch-size=2
+workspace-size=2048
 network-mode=2
 num-detected-classes=1
 interval=0
