@@ -11,7 +11,7 @@ Universal, game-agnostic FRC vision coprocessor. Runs on Jetson Orin Nano Super.
 - **Coprocessor:** Jetson Orin Nano Super
 - **Cameras:** 2–4 cameras; USB (V4L2) and/or CSI supported simultaneously
 - **Default camera count:** 2
-- **Resolution:** 640×480 (RFDetr standard input)
+- **Resolution:** 640×480 input; letterboxed to 640×640 for YOLO inference (aspect ratio preserved)
 - **Target FPS:** ≥50 per camera
 - **Deployment:** Docker container
 
@@ -21,7 +21,7 @@ The Orange Pi AprilTag system is a separate, independent subsystem — no integr
 
 ## Object Detection
 
-- **Framework:** NVIDIA DeepStream with RFDetr backbone
+- **Framework:** NVIDIA DeepStream with YOLO11 backbone (custom TensorRT parser)
 - **Optimization:** INT8 TensorRT `.engine` files
 - **Classes:** Variable — adapts to however many classes the loaded model defines
 - **Confidence threshold:** Configurable per class via web interface
@@ -130,6 +130,26 @@ Accessed from driver station laptop on robot WiFi. No internet required. No auth
 - **Detection tuning:** Per-class confidence thresholds
 - **Tracker tuning:** JPDA parameters (confirmation frames, loss frames, gate distance)
 - **Settings management:** Import / export all settings as a ZIP file
+
+---
+
+## Camera Configuration
+
+Camera pipeline and pose parameters live in `config/cameras/camera_N.json` (one file per camera). No recompile required to change camera setup or calibration values.
+
+```json
+{
+  "id": 0,
+  "type": "usb",
+  "device": "/dev/video0",
+  "width": 640, "height": 480, "fps": 100,
+  "hw_decode": false,
+  "intrinsics": { "fx": 500.0, "fy": 500.0, "cx": 320.0, "cy": 240.0 },
+  "extrinsics": { "tx": 0.3, "ty": -0.1, "tz": 0.6, "yaw": 0.0, "pitch": 0.5, "roll": 0.0 }
+}
+```
+
+> **Note:** `hw_decode` is disabled on Orin Nano due to NvJPEG OOM constraints. Camera 1 uses CPU JPEG decode (`jpegdec`) to sustain 100 fps on both streams.
 
 ---
 
