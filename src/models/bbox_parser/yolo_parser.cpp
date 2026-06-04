@@ -66,6 +66,9 @@ extern "C" bool NvDsInferParseCustomYolo(
 
         if (best_score < threshold) continue;
 
+        // YOLO11/v8 ONNX export decodes anchors internally and outputs pixel
+        // coordinates in network input space (0..640). Do NOT re-multiply by
+        // networkInfo dims — nvinfer scales from network→frame space itself.
         float cx = out[0 * num_anchors + a];
         float cy = out[1 * num_anchors + a];
         float bw = out[2 * num_anchors + a];
@@ -74,10 +77,10 @@ extern "C" bool NvDsInferParseCustomYolo(
         NvDsInferParseObjectInfo obj{};
         obj.classId             = static_cast<unsigned int>(best_class);
         obj.detectionConfidence = best_score;
-        obj.left   = (cx - bw / 2.f) * networkInfo.width;
-        obj.top    = (cy - bh / 2.f) * networkInfo.height;
-        obj.width  = bw * networkInfo.width;
-        obj.height = bh * networkInfo.height;
+        obj.left   = cx - bw / 2.f;
+        obj.top    = cy - bh / 2.f;
+        obj.width  = bw;
+        obj.height = bh;
         objectList.push_back(obj);
     }
     if (do_log) {
