@@ -2,7 +2,6 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "nvdsinfer_custom_impl.h"
 #include <vector>
-#include <cstring>
 
 extern "C" bool NvDsInferParseCustomYolo(
     std::vector<NvDsInferLayerInfo> const&,
@@ -38,7 +37,7 @@ TEST_CASE("YOLO parser outputs pixel-space coords without re-scaling", "[parser]
     auto buf = make_yolo_buffer(NUM_ANCHORS, NUM_CLASSES, 0, CX, CY, BW, BH, SCORE);
 
     NvDsInferLayerInfo layer{};
-    std::memcpy(layer.layerName, "output0", sizeof("output0"));
+    layer.layerName = "output0";
     layer.inferDims.numDims    = 2;
     layer.inferDims.d[0]       = 4 + NUM_CLASSES;
     layer.inferDims.d[1]       = NUM_ANCHORS;
@@ -77,7 +76,7 @@ TEST_CASE("YOLO parser skips anchors below threshold", "[parser]") {
     auto buf = make_yolo_buffer(NUM_ANCHORS, NUM_CLASSES, 42, 320.f, 240.f, 100.f, 100.f, 0.3f);
 
     NvDsInferLayerInfo layer{};
-    std::memcpy(layer.layerName, "output0", sizeof("output0"));
+    layer.layerName = "output0";
     layer.inferDims.d[0] = 5; layer.inferDims.d[1] = NUM_ANCHORS;
     layer.buffer = buf.data();
 
@@ -91,7 +90,7 @@ TEST_CASE("YOLO parser skips anchors below threshold", "[parser]") {
 
 TEST_CASE("YOLO parser returns false when output0 layer missing", "[parser]") {
     NvDsInferLayerInfo layer{};
-    std::memcpy(layer.layerName, "wrong_name", sizeof("wrong_name"));
+    layer.layerName = "wrong_name";
     layer.inferDims.d[0] = 5; layer.inferDims.d[1] = 100;
     std::vector<float> buf(500, 0.f);
     layer.buffer = buf.data();
