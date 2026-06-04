@@ -1,4 +1,7 @@
 .worktrees/
+build/
+vendordep/.gradle/
+vendordep/build/
 
 # Large model files — store via releases or external storage
 *.pth
