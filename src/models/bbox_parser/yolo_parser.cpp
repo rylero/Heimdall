@@ -9,6 +9,8 @@
 
 #include "nvdsinfer_custom_impl.h"
 #include <algorithm>
+#include <atomic>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -34,10 +36,19 @@ extern "C" bool NvDsInferParseCustomYolo(
         }
     }
 
-    if (!out || num_anchors <= 0 || row_stride < 5) return false;
+    if (!out || num_anchors <= 0 || row_stride < 5) {
+        std::fprintf(stderr, "[yolo_parser] layer '%s' not found or bad dims (stride=%d anchors=%d)\n",
+                     OUTPUT_LAYER, row_stride, num_anchors);
+        return false;
+    }
     if (detectionParams.perClassThreshold.empty())  return false;
 
     const int num_classes = row_stride - 4;
+
+    // Print max score seen this call to diagnose threshold issues (every 100 calls)
+    static std::atomic<int> s_call{0};
+    bool do_log = (s_call.fetch_add(1) % 100 == 0);
+    float max_score_seen = 0.f;
 
     for (int a = 0; a < num_anchors; ++a) {
         // Transposed: value at row r, anchor a → out[r * num_anchors + a]
@@ -47,6 +58,7 @@ extern "C" bool NvDsInferParseCustomYolo(
             float score = out[(4 + c) * num_anchors + a];
             if (score > best_score) { best_score = score; best_class = c; }
         }
+        if (do_log && best_score > max_score_seen) max_score_seen = best_score;
 
         float threshold = (best_class < static_cast<int>(detectionParams.perClassThreshold.size()))
             ? detectionParams.perClassThreshold[best_class]
@@ -68,5 +80,9 @@ extern "C" bool NvDsInferParseCustomYolo(
         obj.height = bh * networkInfo.height;
         objectList.push_back(obj);
     }
+    if (do_log)
+        std::fprintf(stderr, "[yolo_parser] detections=%d  max_score=%.4f  threshold=%.2f\n",
+                     static_cast<int>(objectList.size()), max_score_seen,
+                     detectionParams.perClassThreshold.empty() ? 0.f : detectionParams.perClassThreshold[0]);
     return true;
 }
