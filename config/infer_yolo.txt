@@ -15,6 +15,7 @@ interval=0
 gie-unique-id=1
 network-type=0
 cluster-mode=4
+maintain-aspect-ratio=1
 parse-bbox-func-name=NvDsInferParseCustomYolo
 custom-lib-path=/app/build/src/models/bbox_parser/libyolo_parser.so
 
