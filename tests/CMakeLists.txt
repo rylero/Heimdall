@@ -18,10 +18,6 @@ if(TARGET heimdall_pipeline)
         yolo_parser
         Catch2::Catch2WithMain
     )
-    target_include_directories(heimdall_parser_tests PRIVATE
-        "${DS_ROOT}/sources/includes"
-        ${CUDA_INCLUDE_DIRS}
-    )
     catch_discover_tests(heimdall_parser_tests)
 endif()
 
