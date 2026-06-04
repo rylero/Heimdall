@@ -138,7 +138,14 @@ void DeepStreamPipeline::build() {
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
 
-    // Probe fires before tiling so frame->source_id still maps to original camera index
+    // Entry probe on mux src: timestamps the moment a buffer enters nvinfer.
+    GstPad* mux_src = gst_element_get_static_pad(mux, "src");
+    gst_pad_add_probe(mux_src, GST_PAD_PROBE_TYPE_BUFFER,
+        infer_entry_probe_cb, nullptr, nullptr);
+    gst_object_unref(mux_src);
+
+    // Exit probe on infer src: fires after inference, computes inference time.
+    // Also before tiling so frame->source_id still maps to original camera index.
     GstPad* infer_src = gst_element_get_static_pad(infer, "src");
     gst_pad_add_probe(infer_src, GST_PAD_PROBE_TYPE_BUFFER,
         detection_probe_cb, &on_detection_, nullptr);

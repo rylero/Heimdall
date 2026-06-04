@@ -5,7 +5,20 @@
 #include <atomic>
 #include <chrono>
 
-static std::atomic<int> s_frame_count{0};
+static std::atomic<int>      s_frame_count{0};
+// Monotonic ns recorded when a buffer enters nvinfer (mux src probe).
+// Safe with batch-size=1: only one frame in flight at a time.
+static std::atomic<uint64_t> s_infer_entry_ns{0};
+
+GstPadProbeReturn infer_entry_probe_cb(GstPad*, GstPadProbeInfo*, gpointer) {
+    using clk = std::chrono::steady_clock;
+    s_infer_entry_ns.store(
+        static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                clk::now().time_since_epoch()).count()),
+        std::memory_order_relaxed);
+    return GST_PAD_PROBE_OK;
+}
 
 GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointer user_data) {
     auto* cb = static_cast<DetectionCallback*>(user_data);
@@ -19,6 +32,18 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
     s_last_ts = now;
     if (dt > 0.005f && dt < 1.f)   // 5ms minimum avoids microsecond artifact on first call
         s_fps = s_fps * 0.85f + (1.f / dt) * 0.15f;
+
+    // Inference time: delta from mux-src probe to here (infer-src probe)
+    using clk = std::chrono::steady_clock;
+    const uint64_t now_ns = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            clk::now().time_since_epoch()).count());
+    const uint64_t entry_ns = s_infer_entry_ns.load(std::memory_order_relaxed);
+    const float infer_ms = (entry_ns > 0) ? (now_ns - entry_ns) * 1e-6f : 0.f;
+
+    static float s_infer_ms_avg = 0.f;
+    if (infer_ms > 0.5f && infer_ms < 200.f)
+        s_infer_ms_avg = s_infer_ms_avg * 0.9f + infer_ms * 0.1f;
 
     GstBuffer* buf = GST_PAD_PROBE_INFO_BUFFER(info);
     if (!buf) return GST_PAD_PROBE_OK;
@@ -39,8 +64,8 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
         if (dmeta) {
             dmeta->num_labels = 1;
             NvOSD_TextParams& txt = dmeta->text_params[0];
-            txt.display_text      = g_strdup_printf("FPS: %.1f  CAM %d",
-                                                     s_fps, frame->source_id);
+            txt.display_text      = g_strdup_printf("FPS: %.1f  infer: %.1fms  CAM %d",
+                                                     s_fps, s_infer_ms_avg, frame->source_id);
             txt.x_offset          = 10;
             txt.y_offset          = 10;
             txt.font_params.font_name  = const_cast<gchar*>("Serif Bold");
@@ -54,8 +79,8 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
         // Debug: log object count every 100 frames to confirm nvinfer attaches metadata
         if (s_frame_count % 100 == 0) {
             int n = 0; for (auto* l = frame->obj_meta_list; l; l = l->next) ++n;
-            std::fprintf(stderr, "[probe] cam%d frame=%d obj_meta count=%d\n",
-                         frame->source_id, s_frame_count.load(), n);
+            std::fprintf(stderr, "[probe] cam%d frame=%d fps=%.1f infer_avg=%.1fms objs=%d\n",
+                         frame->source_id, s_frame_count.load(), s_fps, s_infer_ms_avg, n);
         }
 
         for (auto* lo = frame->obj_meta_list; lo; lo = lo->next) {
