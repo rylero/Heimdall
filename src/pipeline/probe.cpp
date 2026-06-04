@@ -51,6 +51,13 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
             nvds_add_display_meta_to_frame(frame, dmeta);
         }
 
+        // Debug: log object count every 100 frames to confirm nvinfer attaches metadata
+        if (s_frame_count % 100 == 0) {
+            int n = 0; for (auto* l = frame->obj_meta_list; l; l = l->next) ++n;
+            std::fprintf(stderr, "[probe] cam%d frame=%d obj_meta count=%d\n",
+                         frame->source_id, s_frame_count.load(), n);
+        }
+
         for (auto* lo = frame->obj_meta_list; lo; lo = lo->next) {
             auto* obj = static_cast<NvDsObjectMeta*>(lo->data);
             const auto& r = obj->rect_params;
