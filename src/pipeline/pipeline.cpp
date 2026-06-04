@@ -31,7 +31,7 @@ void DeepStreamPipeline::build() {
         "width",                static_cast<gint>(cameras_[0].width),
         "height",               static_cast<gint>(cameras_[0].height),
         "batch-size",           static_cast<gint>(cameras_.size()),
-        "batched-push-timeout", 4000000,
+        "batched-push-timeout", 1000000,
         "live-source",          TRUE,
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), mux);
