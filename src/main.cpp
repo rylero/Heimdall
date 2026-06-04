@@ -17,8 +17,6 @@ int main() {
         // CPU jpegdec is sufficient — pipeline is inference-bottlenecked at ~35fps anyway.
         {.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=100, .hw_decode=false},
         {.id=1, .type=CameraType::USB, .device="/dev/video2", .width=640, .height=480, .fps=100, .hw_decode=false},
-        {.id=2, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=0},
-        {.id=3, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=1},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
