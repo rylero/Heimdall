@@ -20,7 +20,7 @@ COPY proto/ proto/
 COPY tests/CMakeLists.txt tests/CMakeLists.txt
 # Stub source files so cmake configure succeeds before real sources are copied
 RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
-             src/models/bbox_parser tools tests && \
+             src/models/bbox_parser src/config tools tests && \
     touch src/tracker/kalman.cpp src/tracker/jpda.cpp src/tracker/tracker.cpp \
           src/pose/pose_estimator.cpp \
           src/comm/comm_layer.cpp \
@@ -28,6 +28,7 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           src/app/heimdall_app.cpp src/main.cpp \
           src/models/bbox_parser/rfdetr_parser.cpp \
           src/models/bbox_parser/yolo_parser.cpp \
+          src/config/camera_config_loader.cpp \
           tools/mock_robot.cpp \
           tests/test_camera_source.cpp tests/test_pipeline_chain.cpp \
           tests/test_yolo_parser.cpp \

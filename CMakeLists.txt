@@ -8,6 +8,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
 # ---------------------------------------------------------------------------
+# nlohmann/json — header-only JSON parsing (camera config files)
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
+set(JSON_Install    OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# ---------------------------------------------------------------------------
 # Catch2 — unit testing
 # ---------------------------------------------------------------------------
 FetchContent_Declare(
@@ -171,6 +184,7 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
     add_executable(heimdall
         src/main.cpp
         src/app/heimdall_app.cpp
+        src/config/camera_config_loader.cpp
     )
     target_include_directories(heimdall PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -178,6 +192,7 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
     target_link_libraries(heimdall
         heimdall_pipeline
         heimdall_comm
+        nlohmann_json::nlohmann_json
     )
 
     # RFDetr bbox parser shared library
