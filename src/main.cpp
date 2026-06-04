@@ -13,11 +13,12 @@ static void shutdown(int) {
 int main() {
     // Pipeline cameras: device path + resolution (for GStreamer source elements)
     std::vector<CameraConfig> pipeline_cameras = {
-        // hw_decode=true: Orin Nano has one NvJPEG unit — only one camera can use it
-        {.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=60, .hw_decode=true},
-        {.id=1, .type=CameraType::USB, .device="/dev/video2", .width=640, .height=480, .fps=30, .hw_decode=false},
-        {.id=2, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=60, .mirror_of=0},
-        {.id=3, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=30, .mirror_of=1},
+        // Orin Nano has one NvJPEG unit: cam0 uses hardware decode, cam1 uses CPU jpegdec.
+        // CPU jpegdec on A78AE cores handles 100fps at 640x480 easily within the inference budget.
+        {.id=0, .type=CameraType::USB, .device="/dev/video0", .width=640, .height=480, .fps=100, .hw_decode=true},
+        {.id=1, .type=CameraType::USB, .device="/dev/video2", .width=640, .height=480, .fps=100, .hw_decode=false},
+        {.id=2, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=0},
+        {.id=3, .type=CameraType::USB, .device="",            .width=640, .height=480, .fps=100, .mirror_of=1},
     };
 
     // Pose cameras: intrinsics + extrinsics (for ground ray projection)
