@@ -12,7 +12,7 @@ Universal, game-agnostic FRC vision coprocessor. Runs on Jetson Orin Nano Super.
 - **Cameras:** 2–4 cameras; USB (V4L2) and/or CSI supported simultaneously
 - **Default camera count:** 2
 - **Resolution:** 640×480 input; letterboxed to 640×640 for YOLO inference (aspect ratio preserved)
-- **Target FPS:** ≥50 per camera
+- **Target FPS:** ≥50 per camera (currently at 70 for 2 cameras and 35 for four)
 - **Deployment:** Docker container
 
 The Orange Pi AprilTag system is a separate, independent subsystem — no integration with Heimdall.
