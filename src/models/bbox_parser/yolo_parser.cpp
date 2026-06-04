@@ -80,9 +80,16 @@ extern "C" bool NvDsInferParseCustomYolo(
         obj.height = bh * networkInfo.height;
         objectList.push_back(obj);
     }
-    if (do_log)
-        std::fprintf(stderr, "[yolo_parser] detections=%d  max_score=%.4f  threshold=%.2f\n",
+    if (do_log) {
+        std::fprintf(stderr, "[yolo_parser] detections=%d  max_score=%.4f  threshold=%.2f  net=%dx%d\n",
                      static_cast<int>(objectList.size()), max_score_seen,
-                     detectionParams.perClassThreshold.empty() ? 0.f : detectionParams.perClassThreshold[0]);
+                     detectionParams.perClassThreshold.empty() ? 0.f : detectionParams.perClassThreshold[0],
+                     networkInfo.width, networkInfo.height);
+        for (int i = 0; i < std::min((int)objectList.size(), 3); ++i) {
+            const auto& o = objectList[i];
+            std::fprintf(stderr, "  [%d] conf=%.3f cls=%u l=%.1f t=%.1f w=%.1f h=%.1f\n",
+                         i, o.detectionConfidence, o.classId, o.left, o.top, o.width, o.height);
+        }
+    }
     return true;
 }
