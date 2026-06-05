@@ -15,7 +15,7 @@ int main() {
     HeimdallApp::Config cfg{
         .pipeline_cameras  = cameras.pipeline_cameras,
         .pose_cameras      = cameras.pose_cameras,
-        .infer_config_path = "config/infer_yolo.txt",
+        .infer_config_path = "config/infer_yolo26n.txt",
         .tracker           = {
             .confirmation_frames = 3,
             .loss_frames         = 5,
