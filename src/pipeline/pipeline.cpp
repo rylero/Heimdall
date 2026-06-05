@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_map>
 
+// Stable per-slot indices passed as user_data to decode_done_probe_cb.
+static int s_cam_slots[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+
 static constexpr int RTSP_SERV_PORT = 8554;
 
 DeepStreamPipeline::DeepStreamPipeline(
@@ -137,6 +140,17 @@ void DeepStreamPipeline::build() {
     if (!infer) throw std::runtime_error("Failed to create nvinfer");
     g_object_set(infer, "config-file-path", infer_config_path_.c_str(), nullptr);
     gst_bin_add(GST_BIN(pipeline_), infer);
+
+    // Decode-done probes: one per mux sink pad, fires when a decoded frame arrives.
+    for (int i = 0; i < static_cast<int>(cameras_.size()); ++i) {
+        std::string pad_name = "sink_" + std::to_string(i);
+        GstPad* sink = gst_element_get_static_pad(mux, pad_name.c_str());
+        if (sink) {
+            gst_pad_add_probe(sink, GST_PAD_PROBE_TYPE_BUFFER,
+                decode_done_probe_cb, &s_cam_slots[i], nullptr);
+            gst_object_unref(sink);
+        }
+    }
 
     // Entry probe on mux src: timestamps the moment a buffer enters nvinfer.
     GstPad* mux_src = gst_element_get_static_pad(mux, "src");
