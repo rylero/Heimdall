@@ -200,14 +200,7 @@ def field_to_screen(fx: float, fy: float) -> tuple[int, int]:
 
 
 def draw_field(surf: pygame.Surface, font: pygame.font.Font):
-    surf.fill((30, 30, 30))
-
-    # Field rectangle
-    tl = field_to_screen(0, FIELD_H)
-    br = field_to_screen(FIELD_W, 0)
-    rect = pygame.Rect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1])
-    pygame.draw.rect(surf, (50, 80, 50), rect)
-    pygame.draw.rect(surf, (100, 150, 100), rect, 2)
+    surf.fill((50, 80, 50))
 
     # Centre line
     pygame.draw.line(surf,
