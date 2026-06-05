@@ -234,16 +234,20 @@ def draw_robot(surf: pygame.Surface):
 
 def draw_tracks(surf: pygame.Surface, font: pygame.font.Font,
                 tracks: dict, now: float):
+    FADE_S = 0.4   # seconds to fade after last update before removal
+    to_delete = [tid for tid, info in tracks.items()
+                 if now - info['last_seen'] > FADE_S or info['type'] == EVENT_LOST]
+    for tid in to_delete:
+        del tracks[tid]
+
     for tid, info in list(tracks.items()):
         age = now - info['last_seen']
-        if age > 2.0:
-            continue
         obj = info['obj']
         ev_type = info['type']
 
         color = TRACK_COLORS[tid % len(TRACK_COLORS)]
-        if ev_type == EVENT_LOST or age > 0.5:
-            alpha = max(40, int(255 * (1.0 - age / 2.0)))
+        if age > 0.1:
+            alpha = max(60, int(255 * (1.0 - age / FADE_S)))
             color = tuple(int(c * alpha / 255) for c in color)
 
         sx, sy = field_to_screen(obj['x'], obj['y'])
@@ -310,7 +314,7 @@ def main():
             frames_rx += 1
             last_frame_time = now
 
-        draw_field(screen, font)
+        # draw_field(screen, font)
         draw_robot(screen)
         draw_tracks(screen, font, tracks, now)
 
