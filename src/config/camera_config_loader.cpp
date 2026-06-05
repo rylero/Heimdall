@@ -43,6 +43,8 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         cfg.fps       = j.value("fps",       60);
         cfg.hw_decode = j.value("hw_decode", true);
         cfg.mirror_of = j.value("mirror_of", -1);
+        cfg.flip_h    = j.value("flip_h", false);
+        cfg.flip_v    = j.value("flip_v", false);
 
         const auto& intr = j.at("intrinsics");
         const auto& extr = j.at("extrinsics");

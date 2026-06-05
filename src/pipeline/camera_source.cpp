@@ -3,6 +3,13 @@
 #include <stdexcept>
 
 std::string build_source_description(const CameraConfig& cfg) {
+    // nvvidconv flip-method: 0=none, 4=horiz, 6=vert, 2=both(180°)
+    const int flip = (cfg.flip_h && cfg.flip_v) ? 2
+                   : cfg.flip_h                 ? 4
+                   : cfg.flip_v                 ? 6
+                                                : 0;
+    const std::string vidconv = " ! nvvidconv flip-method=" + std::to_string(flip);
+
     std::ostringstream ss;
     switch (cfg.type) {
         case CameraType::USB:
@@ -12,12 +19,9 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1";
             if (cfg.hw_decode) {
-                // nvv4l2decoder uses Jetson NvJPEG hardware; Orin Nano has one unit —
-                // only one camera can use this path. Outputs Y42B NVMM; nvvidconv→NV12.
-                ss << " ! nvv4l2decoder mjpeg=1 ! nvvidconv";
+                ss << " ! nvv4l2decoder mjpeg=1" << vidconv;
             } else {
-                // CPU path: jpegdec → nvvidconv (CPU→NVMM); ~30fps cap but no HW limit.
-                ss << " ! jpegdec ! nvvidconv";
+                ss << " ! jpegdec" << vidconv;
             }
             break;
         case CameraType::CSI:
@@ -26,18 +30,16 @@ std::string build_source_description(const CameraConfig& cfg) {
                << ",width="  << cfg.width
                << ",height=" << cfg.height
                << ",format=NV12"
-               << ",framerate=" << cfg.fps << "/1";
+               << ",framerate=" << cfg.fps << "/1"
+               << vidconv;
             break;
         case CameraType::TEST:
-            // Synthetic source for load/layout testing; pattern cycles by id.
-            // is-live=true required because nvstreammux expects live sources.
-            // nvvidconv converts CPU video/x-raw → NVMM NV12 for nvstreammux.
             ss << "videotestsrc is-live=true pattern=" << (cfg.id % 18)
                << " ! capsfilter caps=\"video/x-raw"
                << ",width="     << cfg.width
                << ",height="    << cfg.height
                << ",framerate=" << cfg.fps << "/1\""
-               << " ! nvvidconv";
+               << vidconv;
             break;
         default:
             throw std::invalid_argument("Unknown CameraType");
