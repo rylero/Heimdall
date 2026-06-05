@@ -29,12 +29,13 @@ POSE_HZ = 50        # how often to send pose
 FIELD_W = 16.54
 FIELD_H = 8.21
 
-WIN_W = 1100
-WIN_H = int(WIN_W * FIELD_H / FIELD_W)
 MARGIN = 40
+SCALE  = 40   # pixels per metre
 
-# pixels per metre
-SCALE = (WIN_W - 2 * MARGIN) / FIELD_W
+# Window sized so origin (0,0) sits at centre and the full field fits on the right/top.
+# Left and bottom halves show negative coords (objects behind/below robot start).
+WIN_W = 2 * (int(FIELD_W * SCALE) + MARGIN + 20)
+WIN_H = 2 * (int(FIELD_H * SCALE) + MARGIN + 20)
 
 EVENT_CONFIRMED = 0
 EVENT_UPDATED   = 1
