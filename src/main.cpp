@@ -28,6 +28,7 @@ int main() {
         },
         .bypass_tracker = false,
         .log_tracking   = true,
+        .log_path       = "logs/tracker_log.csv",
     };
 
     HeimdallApp app(cfg);

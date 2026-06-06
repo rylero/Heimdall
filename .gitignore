@@ -17,6 +17,7 @@ __pycache__/
 
 # Runtime data
 web/data/
+logs/*.csv
 
 # Training pipeline — generated data (large, reproducible from zip)
 training/dataset/
