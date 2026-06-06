@@ -46,11 +46,8 @@ bool PoseEstimator::project_pixel(int camera_id,
     const float ofy = rp.y + sh * extr.tx + ch * extr.ty;
     const float ofz = extr.tz;
 
-    // 5. Intersect ray with plane z = kBallRadius.
-    //    Bbox bottom is the sphere silhouette edge, not the floor contact.
-    //    Projecting to ball-center height rather than z=0 removes the bias.
-    constexpr float kBallRadius = 0.03f;  // metres — tune to match game piece
-    const float t = -(ofz - kBallRadius) / dfz;
+    // 5. Ground intersection: ofz + t * dfz = 0
+    const float t = -ofz / dfz;
     field_x = ofx + t * dfx;
     field_y = ofy + t * dfy;
     return true;
