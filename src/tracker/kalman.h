@@ -1,8 +1,8 @@
 #pragma once
 #include "track.h"
 
-// Measurement noise variance (m^2). Derived from +/-7 cm pose accuracy: 0.07^2 ~= 0.005
-inline constexpr float MEAS_NOISE_R    = 0.005f;
+// Measurement noise variance (m^2). ~0.2m dynamic pose error for a moving ball: 0.2^2 = 0.04
+inline constexpr float MEAS_NOISE_R    = 0.04f;
 // Process noise intensity. Higher = trust detections more, allow faster acceleration.
 inline constexpr float PROCESS_NOISE_Q = 2.0f;
 
