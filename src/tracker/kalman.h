@@ -4,7 +4,7 @@
 // Measurement noise variance (m^2). Derived from +/-7 cm pose accuracy: 0.07^2 ~= 0.005
 inline constexpr float MEAS_NOISE_R    = 0.005f;
 // Process noise intensity. Higher = trust detections more, allow faster acceleration.
-inline constexpr float PROCESS_NOISE_Q = 0.1f;
+inline constexpr float PROCESS_NOISE_Q = 2.0f;
 
 // Per-model predict (each uses its own stride N = 2, 4, or 6).
 void kalman_predict_cp(Track& track, double dt);

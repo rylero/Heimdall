@@ -17,16 +17,16 @@ int main() {
         .pose_cameras      = cameras.pose_cameras,
         .infer_config_path = "config/infer_yolo26n.txt",
         .tracker           = {
-            .confirmation_frames = 3,
-            .loss_frames         = 5,
-            .gate_distance       = 1.0f,
+            .confirmation_frames = 2,
+            .loss_frames         = 2,
+            .gate_distance       = 2.0f,
         },
         .comm = {
             .pose_bind_addr       = "tcp://*:5555",
             .output_bind_addr     = "tcp://*:5556",
             .raw_output_bind_addr = "tcp://*:5557",
         },
-        .bypass_tracker = true,
+        .bypass_tracker = false,
     };
 
     HeimdallApp app(cfg);
