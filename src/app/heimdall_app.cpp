@@ -31,7 +31,7 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
         for (int i = 0; i < static_cast<int>(field_dets.size()); ++i) {
             const auto& fd = field_dets[i];
             events.push_back({TrackEventType::UPDATED,
-                TrackedObject{.track_id=i, .class_id=fd.class_id,
+                TrackedObject{.track_id=static_cast<uint32_t>(i), .class_id=fd.class_id,
                               .x=fd.x, .y=fd.y, .confidence=fd.confidence}});
         }
         comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
