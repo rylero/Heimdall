@@ -7,8 +7,10 @@
 #include "tracker/tracker.h"
 #include <atomic>
 #include <condition_variable>
+#include <fstream>
 #include <mutex>
 #include <queue>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -24,6 +26,8 @@ public:
         ObjectTracker::Config      tracker;
         CommLayer::Config          comm;
         bool                       bypass_tracker = false;
+        bool                       log_tracking   = false;
+        std::string                log_path       = "tracker_log.csv";
     };
 
     explicit HeimdallApp(Config config);
@@ -40,6 +44,7 @@ private:
     DeepStreamPipeline pipeline_;
 
     PoseBuffer         pose_buffer_;
+    std::ofstream      log_file_;
     std::atomic<bool>  running_{false};
     std::atomic<bool>  stopped_{false};
     std::thread        pose_recv_thread_;

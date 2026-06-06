@@ -1,5 +1,6 @@
 #include "heimdall_app.h"
 #include <chrono>
+#include <cstdio>
 
 HeimdallApp::HeimdallApp(Config config)
     : config_(std::move(config)),
@@ -8,7 +9,13 @@ HeimdallApp::HeimdallApp(Config config)
       comm_(config_.comm),
       pipeline_(config_.pipeline_cameras, config_.infer_config_path,
                 [this](const std::vector<Detection>& d){ enqueue_detections(d); })
-{}
+{
+    if (config_.log_tracking) {
+        log_file_.open(config_.log_path);
+        log_file_ << "ts_s,source,track_id,x,y,conf\n";
+        std::printf("[tracker log] writing to %s\n", config_.log_path.c_str());
+    }
+}
 
 HeimdallApp::~HeimdallApp() { stop(); }
 
@@ -24,6 +31,12 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     comm_.publish_raw(dets, timestamp_ns);
 
     const auto field_dets = pose_estimator_.project(dets, pose);
+    const double ts_s = static_cast<double>(timestamp_ns) * 1e-9;
+
+    if (config_.log_tracking && log_file_.is_open()) {
+        for (const auto& fd : field_dets)
+            log_file_ << ts_s << ",raw,-1," << fd.x << ',' << fd.y << ',' << fd.confidence << '\n';
+    }
 
     if (config_.bypass_tracker) {
         std::vector<TrackEvent> events;
@@ -38,8 +51,18 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
         return;
     }
 
-    const auto events = tracker_.update(field_dets,
-        static_cast<double>(timestamp_ns) * 1e-9);
+    const auto events = tracker_.update(field_dets, ts_s);
+
+    if (config_.log_tracking && log_file_.is_open()) {
+        for (const auto& ev : events) {
+            const char* src = (ev.type == TrackEventType::CONFIRMED) ? "confirmed"
+                            : (ev.type == TrackEventType::LOST)      ? "lost"
+                                                                      : "tracked";
+            log_file_ << ts_s << ',' << src << ',' << ev.object.track_id
+                      << ',' << ev.object.x << ',' << ev.object.y
+                      << ',' << ev.object.confidence << '\n';
+        }
+    }
 
     comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
 }
