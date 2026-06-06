@@ -72,6 +72,19 @@ std::vector<FieldDetection> PoseEstimator::project(
         if (!project_pixel(det.camera_id, px, py, robot_pose, fx, fy))
             continue;
 
+        // Empirical quadratic distance correction: actual = a*d^2 + b*d + c
+        // Calibrated from 5 measurements (1–3.4 m range). Recalibrate if mounting changes.
+        const float raw_d = std::sqrt(fx*fx + fy*fy);
+        if (raw_d > 0.01f) {
+            constexpr float kA = -0.0658f;
+            constexpr float kB =  0.9637f;
+            constexpr float kC =  0.12f;
+            const float corr_d = std::max(0.f, (kA * raw_d + kB) * raw_d + kC);
+            const float scale  = corr_d / raw_d;
+            fx *= scale;
+            fy *= scale;
+        }
+
         results.push_back({det.class_id, fx, fy, det.confidence});
     }
 

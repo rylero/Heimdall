@@ -240,31 +240,35 @@ def draw_tracks(surf: pygame.Surface, font: pygame.font.Font,
             alpha = max(60, int(255 * (1.0 - age / FADE_S)))
             color = tuple(int(c * alpha / 255) for c in color)
 
-        sx, sy = field_to_screen(obj['x'], obj['y'])
-        ox, oy = field_to_screen(0.0, 0.0)
+        sx, sy   = field_to_screen(obj['x'], obj['y'])
+        ox, oy   = field_to_screen(0.0, 0.0)
+        foot_x, foot_y = field_to_screen(obj['x'], 0.0)  # foot of perpendicular on x-axis
 
-        # distance line from origin to object
+        leg_color = tuple(max(20, c // 3) for c in color)
+        hyp_color = tuple(max(30, c // 2) for c in color)
+
+        # Right triangle: x-leg (origin → foot), y-leg (foot → object)
+        pygame.draw.line(surf, leg_color, (ox, oy), (foot_x, foot_y), 1)
+        pygame.draw.line(surf, leg_color, (foot_x, foot_y), (sx, sy), 1)
+
+        # Hypotenuse with distance label
         dist = (obj['x'] ** 2 + obj['y'] ** 2) ** 0.5
-        line_color = tuple(max(30, c // 2) for c in color)
-        pygame.draw.line(surf, line_color, (ox, oy), (sx, sy), 1)
+        pygame.draw.line(surf, hyp_color, (ox, oy), (sx, sy), 1)
         mid_x = (ox + sx) // 2
         mid_y = (oy + sy) // 2
         dist_surf = font.render(f"{dist:.2f}m", True, color)
         surf.blit(dist_surf, (mid_x + 4, mid_y - 10))
 
-        # velocity arrow
+        # Velocity vector (Kalman filter output, always drawn)
         vx, vy = obj['vx'], obj['vy']
-        spd = (vx**2 + vy**2) ** 0.5
-        if spd > 0.05:
-            ex, ey = field_to_screen(obj['x'] + vx * 0.5,
-                                     obj['y'] + vy * 0.5)
-            pygame.draw.line(surf, color, (sx, sy), (ex, ey), 2)
+        ex, ey = field_to_screen(obj['x'] + vx * 0.5, obj['y'] + vy * 0.5)
+        pygame.draw.line(surf, color, (sx, sy), (ex, ey), 2)
 
-        # object dot
+        # Object dot (on top of lines)
         pygame.draw.circle(surf, color, (sx, sy), 10)
         pygame.draw.circle(surf, (255, 255, 255), (sx, sy), 10, 1)
 
-        # label: id + confidence
+        # Label: id + confidence
         label = f"#{tid} c{obj['class_id']} {obj['confidence']:.2f}"
         lbl_surf = font.render(label, True, color)
         surf.blit(lbl_surf, (sx + 12, sy - 8))
