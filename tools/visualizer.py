@@ -30,12 +30,10 @@ FIELD_W = 16.54
 FIELD_H = 8.21
 
 MARGIN = 40
-SCALE  = 40   # pixels per metre
+SCALE  = 80   # pixels per metre (mouse wheel to zoom)
 
-# Window sized so origin (0,0) sits at centre and the full field fits on the right/top.
-# Left and bottom halves show negative coords (objects behind/below robot start).
-WIN_W = 2 * (int(FIELD_W * SCALE) + MARGIN + 20)
-WIN_H = 2 * (int(FIELD_H * SCALE) + MARGIN + 20)
+WIN_W = 1400
+WIN_H = 800
 
 EVENT_CONFIRMED = 0
 EVENT_UPDATED   = 1
@@ -192,10 +190,12 @@ def _frame_receiver(ip: str):
 # Rendering helpers
 # ---------------------------------------------------------------------------
 
+_scale = SCALE   # mutable — changed by mouse wheel
+
 def field_to_screen(fx: float, fy: float) -> tuple[int, int]:
     """Field coords → screen pixels. Origin (0,0) is at screen centre."""
-    sx = int(WIN_W // 2 + fx * SCALE)
-    sy = int(WIN_H // 2 - fy * SCALE)
+    sx = int(WIN_W // 2 + fx * _scale)
+    sy = int(WIN_H // 2 - fy * _scale)
     return sx, sy
 
 
@@ -212,16 +212,6 @@ def draw_field(surf: pygame.Surface, font: pygame.font.Font):
     ox, oy = field_to_screen(0, 0)
     pygame.draw.line(surf, (80, 80, 160), (ox - 12, oy), (ox + 12, oy), 1)
     pygame.draw.line(surf, (80, 80, 160), (ox, oy - 12), (ox, oy + 12), 1)
-
-    # Axes labels
-    for m in range(0, int(FIELD_W) + 1, 2):
-        sx, sy = field_to_screen(m, 0)
-        lbl = font.render(str(m), True, (120, 120, 120))
-        surf.blit(lbl, (sx - 4, sy + 4))
-    for m in range(0, int(FIELD_H) + 1, 2):
-        sx, sy = field_to_screen(0, m)
-        lbl = font.render(str(m), True, (120, 120, 120))
-        surf.blit(lbl, (sx - 22, sy - 6))
 
 
 def draw_robot(surf: pygame.Surface):
@@ -297,6 +287,9 @@ def main():
                 pygame.quit(); return
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 pygame.quit(); return
+            if ev.type == pygame.MOUSEWHEEL:
+                global _scale
+                _scale = max(10, min(400, int(_scale * (1.1 if ev.y > 0 else 0.9))))
 
         with _frame_lock:
             frame = _latest_frame
@@ -314,7 +307,7 @@ def main():
             frames_rx += 1
             last_frame_time = now
 
-        # draw_field(screen, font)
+        draw_field(screen, font)
         draw_robot(screen)
         draw_tracks(screen, font, tracks, now)
 

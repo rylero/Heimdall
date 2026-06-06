@@ -65,6 +65,18 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
             extr.at("roll").get<float>()
         );
 
+        // Flips happen before nvinfer, so bbox coords are in flipped image space.
+        // Compensate by mirroring the principal point and negating focal length
+        // for the flipped axis so the ray direction stays correct.
+        if (cfg.flip_h) {
+            params.intrinsics.cx = static_cast<float>(cfg.width)  - 1.f - params.intrinsics.cx;
+            params.intrinsics.fx = -params.intrinsics.fx;
+        }
+        if (cfg.flip_v) {
+            params.intrinsics.cy = static_cast<float>(cfg.height) - 1.f - params.intrinsics.cy;
+            params.intrinsics.fy = -params.intrinsics.fy;
+        }
+
         result.pipeline_cameras.push_back(cfg);
         result.pose_cameras.push_back(params);
     }
