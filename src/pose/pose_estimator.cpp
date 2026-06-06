@@ -46,8 +46,11 @@ bool PoseEstimator::project_pixel(int camera_id,
     const float ofy = rp.y + sh * extr.tx + ch * extr.ty;
     const float ofz = extr.tz;
 
-    // 5. Ground intersection: ofz + t * dfz = 0
-    const float t = -ofz / dfz;
+    // 5. Intersect ray with plane z = kBallRadius.
+    //    Bbox bottom is the sphere silhouette edge, not the floor contact.
+    //    Projecting to ball-center height rather than z=0 removes the bias.
+    constexpr float kBallRadius = 0.03f;  // metres — tune to match game piece
+    const float t = -(ofz - kBallRadius) / dfz;
     field_x = ofx + t * dfx;
     field_y = ofy + t * dfy;
     return true;
@@ -71,19 +74,6 @@ std::vector<FieldDetection> PoseEstimator::project(
         float fx, fy;
         if (!project_pixel(det.camera_id, px, py, robot_pose, fx, fy))
             continue;
-
-        // Empirical quadratic distance correction: actual = a*d^2 + b*d + c
-        // Calibrated from 5 measurements (1–3.4 m range). Recalibrate if mounting changes.
-        const float raw_d = std::sqrt(fx*fx + fy*fy);
-        if (raw_d > 0.01f) {
-            constexpr float kA = -0.0658f;
-            constexpr float kB =  0.9637f;
-            constexpr float kC =  0.12f;
-            const float corr_d = std::max(0.f, (kA * raw_d + kB) * raw_d + kC);
-            const float scale  = corr_d / raw_d;
-            fx *= scale;
-            fy *= scale;
-        }
 
         results.push_back({det.class_id, fx, fy, det.confidence});
     }
