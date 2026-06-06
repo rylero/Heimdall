@@ -26,7 +26,7 @@ int main() {
             .output_bind_addr     = "tcp://*:5556",
             .raw_output_bind_addr = "tcp://*:5557",
         },
-        .bypass_tracker = false,
+        .bypass_tracker = true,
     };
 
     HeimdallApp app(cfg);
