@@ -13,9 +13,19 @@ bool PoseEstimator::project_pixel(int camera_id,
     const auto& extr = cam.extrinsics;
     const auto& R    = extr.R;  // camera->robot, row-major 3x3
 
-    // 1. Unproject pixel to direction in camera frame: d_cam = [u, v, 1]
-    const float u = (px - intr.cx) / intr.fx;
-    const float v = (py - intr.cy) / intr.fy;
+    // 1. Unproject pixel to distorted normalised coords, then iteratively undistort.
+    //    intr.cx/fx are already flip-adjusted, so (xd,yd) are in original camera space.
+    const float xd = (px - intr.cx) / intr.fx;
+    const float yd = (py - intr.cy) / intr.fy;
+    float u = xd, v = yd;
+    for (int i = 0; i < 5; ++i) {
+        const float r2  = u*u + v*v;
+        const float r4  = r2 * r2;
+        const float r6  = r4 * r2;
+        const float rad = 1.f + intr.k1*r2 + intr.k2*r4 + intr.k3*r6;
+        u = (xd - 2.f*intr.p1*u*v - intr.p2*(r2 + 2.f*u*u)) / rad;
+        v = (yd - intr.p1*(r2 + 2.f*v*v) - 2.f*intr.p2*u*v) / rad;
+    }
 
     // 2. Rotate direction to robot frame: d_rob = R * d_cam
     const float drx = R[0]*u + R[1]*v + R[2];

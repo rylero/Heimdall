@@ -4,8 +4,9 @@
 #include <cstdint>
 
 struct CameraIntrinsics {
-    float fx, fy;   // focal lengths, pixels
-    float cx, cy;   // principal point, pixels
+    float fx, fy;                    // focal lengths, pixels
+    float cx, cy;                    // principal point, pixels
+    float k1=0, k2=0, p1=0, p2=0, k3=0;  // Brown-Conrady distortion coefficients
 };
 
 struct CameraExtrinsics {

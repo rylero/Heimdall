@@ -50,12 +50,18 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         const auto& extr = j.at("extrinsics");
 
         CameraParams params;
-        params.intrinsics = {
-            intr.at("fx").get<float>(),
-            intr.at("fy").get<float>(),
-            intr.at("cx").get<float>(),
-            intr.at("cy").get<float>(),
-        };
+        params.intrinsics.fx = intr.at("fx").get<float>();
+        params.intrinsics.fy = intr.at("fy").get<float>();
+        params.intrinsics.cx = intr.at("cx").get<float>();
+        params.intrinsics.cy = intr.at("cy").get<float>();
+        if (intr.contains("distortion")) {
+            const auto& d = intr.at("distortion");
+            params.intrinsics.k1 = d.value("k1", 0.f);
+            params.intrinsics.k2 = d.value("k2", 0.f);
+            params.intrinsics.p1 = d.value("p1", 0.f);
+            params.intrinsics.p2 = d.value("p2", 0.f);
+            params.intrinsics.k3 = d.value("k3", 0.f);
+        }
         params.extrinsics.tx = extr.at("tx").get<float>();
         params.extrinsics.ty = extr.at("ty").get<float>();
         params.extrinsics.tz = extr.at("tz").get<float>();
