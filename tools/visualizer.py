@@ -241,6 +241,16 @@ def draw_tracks(surf: pygame.Surface, font: pygame.font.Font,
             color = tuple(int(c * alpha / 255) for c in color)
 
         sx, sy = field_to_screen(obj['x'], obj['y'])
+        ox, oy = field_to_screen(0.0, 0.0)
+
+        # distance line from origin to object
+        dist = (obj['x'] ** 2 + obj['y'] ** 2) ** 0.5
+        line_color = tuple(max(30, c // 2) for c in color)
+        pygame.draw.line(surf, line_color, (ox, oy), (sx, sy), 1)
+        mid_x = (ox + sx) // 2
+        mid_y = (oy + sy) // 2
+        dist_surf = font.render(f"{dist:.2f}m", True, color)
+        surf.blit(dist_surf, (mid_x + 4, mid_y - 10))
 
         # velocity arrow
         vx, vy = obj['vx'], obj['vy']
