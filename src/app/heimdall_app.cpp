@@ -24,6 +24,20 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     comm_.publish_raw(dets, timestamp_ns);
 
     const auto field_dets = pose_estimator_.project(dets, pose);
+
+    if (config_.bypass_tracker) {
+        std::vector<TrackEvent> events;
+        events.reserve(field_dets.size());
+        for (int i = 0; i < static_cast<int>(field_dets.size()); ++i) {
+            const auto& fd = field_dets[i];
+            events.push_back({TrackEventType::UPDATED,
+                TrackedObject{.track_id=i, .class_id=fd.class_id,
+                              .x=fd.x, .y=fd.y, .confidence=fd.confidence}});
+        }
+        comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
+        return;
+    }
+
     const auto events = tracker_.update(field_dets,
         static_cast<double>(timestamp_ns) * 1e-9);
 

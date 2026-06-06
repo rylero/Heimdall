@@ -21,6 +21,7 @@ int main() {
             .loss_frames         = 5,
             .gate_distance       = 1.0f,
         },
+        .bypass_tracker    = true,
         .comm = {
             .pose_bind_addr       = "tcp://*:5555",
             .output_bind_addr     = "tcp://*:5556",

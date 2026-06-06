@@ -23,6 +23,7 @@ public:
         std::string                infer_config_path;
         ObjectTracker::Config      tracker;
         CommLayer::Config          comm;
+        bool                       bypass_tracker = false;
     };
 
     explicit HeimdallApp(Config config);
