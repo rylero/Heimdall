@@ -14,6 +14,11 @@ HeimdallApp::HeimdallApp(Config config)
         log_file_.open(config_.log_path);
         log_file_ << "ts_s,source,track_id,x,y,conf\n";
         std::printf("[tracker log] writing to %s\n", config_.log_path.c_str());
+
+        const std::string debug_path = config_.log_path + ".debug.csv";
+        debug_log_file_.open(debug_path);
+        debug_log_file_ << "ts_s,track_id,p_xx,p_yy,gain_xx,gain_yy,beta,maha\n";
+        std::printf("[tracker log] writing debug info to %s\n", debug_path.c_str());
     }
 }
 
@@ -61,6 +66,15 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
             log_file_ << ts_s << ',' << src << ',' << ev.object.track_id
                       << ',' << ev.object.x << ',' << ev.object.y
                       << ',' << ev.object.confidence << '\n';
+        }
+    }
+
+    if (config_.log_tracking && debug_log_file_.is_open()) {
+        for (const auto& d : tracker_.debug_info()) {
+            debug_log_file_ << ts_s << ',' << d.track_id
+                            << ',' << d.p_xx << ',' << d.p_yy
+                            << ',' << d.gain_xx << ',' << d.gain_yy
+                            << ',' << d.beta << ',' << d.maha << '\n';
         }
     }
 

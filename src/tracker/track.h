@@ -26,4 +26,11 @@ struct Track {
     int         frames_seen;
     int         frames_missed;
     TrackStatus status;
+
+    // Debug snapshot from the most recent jpda_update cycle (post-predict, pre-update).
+    // p_xx/p_yy + MEAS_NOISE_R fully determine the diagonal Kalman gain K = P/(P+R).
+    float       dbg_p_xx = 0.f;
+    float       dbg_p_yy = 0.f;
+    float       dbg_beta = 0.f;   // combined JPDAF association weight (0 = no detection associated)
+    float       dbg_maha = 0.f;   // Mahalanobis distance^2 to closest-matching detection (0 if none gated)
 };

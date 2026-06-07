@@ -25,6 +25,8 @@ std::vector<int> jpda_update(
         for (auto& t : tracks) {
             ++t.frames_missed;
             t.last_update_s = timestamp_s;
+            t.dbg_beta = 0.f;
+            t.dbg_maha = 0.f;
         }
         std::vector<int> all(m);
         for (int j = 0; j < m; ++j) all[j] = j;
@@ -41,14 +43,21 @@ std::vector<int> jpda_update(
         const float s11 = P[1*N+1] + MEAS_NOISE_R;
         const float norm = 1.f / (TWO_PI * std::sqrt(s00 * s11));
 
+        tracks[i].dbg_p_xx = P[0*N+0];
+        tracks[i].dbg_p_yy = P[1*N+1];
+        tracks[i].dbg_maha = 0.f;
+        float min_maha = -1.f;
+
         for (int j = 0; j < m; ++j) {
             float dx = detections[j].x - tracks[i].state[0];
             float dy = detections[j].y - tracks[i].state[1];
             if (std::sqrt(dx*dx + dy*dy) >= cfg.gate_distance) continue;
             float maha = (dx*dx) / s00 + (dy*dy) / s11;
+            if (min_maha < 0.f || maha < min_maha) min_maha = maha;
             if (maha > MAHALANOBIS_GATE_THRESHOLD) continue;  // statistically incompatible -- leave L=0
             L[i][j] = norm * std::exp(-0.5f * maha);
         }
+        if (min_maha >= 0.f) tracks[i].dbg_maha = min_maha;
     }
 
     // 3. Marginal JPDAF probabilities
@@ -74,6 +83,8 @@ std::vector<int> jpda_update(
             innov_y    += beta[i][j] * (detections[j].y - tracks[i].state[1]);
             total_beta += beta[i][j];
         }
+
+        tracks[i].dbg_beta = total_beta;
 
         kalman_update_combined(tracks[i], innov_x, innov_y, total_beta);
         tracks[i].last_update_s = timestamp_s;

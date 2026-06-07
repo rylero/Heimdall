@@ -45,6 +45,7 @@ private:
 
     PoseBuffer         pose_buffer_;
     std::ofstream      log_file_;
+    std::ofstream      debug_log_file_;
     std::atomic<bool>  running_{false};
     std::atomic<bool>  stopped_{false};
     std::thread        pose_recv_thread_;

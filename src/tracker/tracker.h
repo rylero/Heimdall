@@ -25,6 +25,9 @@ public:
         double timestamp_s
     );
 
+    // Snapshot of Kalman/JPDA internals from the most recent update() call, for debug logging.
+    std::vector<TrackDebugInfo> debug_info() const;
+
 private:
     Config             config_;
     std::vector<Track> tracks_;

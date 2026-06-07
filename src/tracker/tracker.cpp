@@ -68,3 +68,19 @@ std::vector<TrackEvent> ObjectTracker::update(
     tracks_ = std::move(surviving);
     return events;
 }
+
+std::vector<TrackDebugInfo> ObjectTracker::debug_info() const {
+    std::vector<TrackDebugInfo> out;
+    out.reserve(tracks_.size());
+    for (const auto& t : tracks_) {
+        out.push_back(TrackDebugInfo{
+            t.id,
+            t.dbg_p_xx, t.dbg_p_yy,
+            t.dbg_p_xx / (t.dbg_p_xx + MEAS_NOISE_R),
+            t.dbg_p_yy / (t.dbg_p_yy + MEAS_NOISE_R),
+            t.dbg_beta,
+            t.dbg_maha,
+        });
+    }
+    return out;
+}
