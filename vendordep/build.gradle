@@ -19,6 +19,13 @@ repositories {
 dependencies {
     // JeroMQ — pure Java ZMQ; no native libs needed on RoboRIO.
     implementation 'org.zeromq:jeromq:0.5.4'
+
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 // Fat JAR: bundle JeroMQ so the vendordep is a single self-contained artifact.
