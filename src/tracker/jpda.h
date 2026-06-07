@@ -4,10 +4,15 @@
 #include <vector>
 
 struct JpdaConfig {
-    float gate_distance   = 1.0f;  // meters, Euclidean gating radius
+    float gate_distance   = 1.0f;  // meters, coarse Euclidean pre-filter (cheap reject before maha calc)
     float clutter_density = 1.0f;  // lambda -- expected clutter returns per gated region
     float p_detection     = 0.9f;  // P_D -- probability of detecting a present target
 };
+
+// Chi-square critical value, 2 DOF, 99% confidence. Detections with Mahalanobis distance
+// beyond this are statistically incompatible with the track and excluded (L=0) so they can
+// be marked unassociated (spawn new track) rather than silently absorbed with beta~=0.
+inline constexpr float MAHALANOBIS_GATE_THRESHOLD = 9.21f;
 
 // Run one JPDAF cycle:
 //   1. Predict all tracks to timestamp_s

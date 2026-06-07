@@ -46,6 +46,7 @@ std::vector<int> jpda_update(
             float dy = detections[j].y - tracks[i].state[1];
             if (std::sqrt(dx*dx + dy*dy) >= cfg.gate_distance) continue;
             float maha = (dx*dx) / s00 + (dy*dy) / s11;
+            if (maha > MAHALANOBIS_GATE_THRESHOLD) continue;  // statistically incompatible -- leave L=0
             L[i][j] = norm * std::exp(-0.5f * maha);
         }
     }
