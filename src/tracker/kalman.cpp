@@ -12,6 +12,9 @@ void kalman_predict_cp(Track& track, double dt_d) {
     const float q = PROCESS_NOISE_Q;
     P[0*N+0] += q * dt;
     P[1*N+1] += q * dt;
+
+    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
+    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
 }
 
 void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight) {
@@ -75,6 +78,9 @@ void kalman_predict_cv(Track& track, double dt_d) {
     P[3*N+3] += q * dt2;
     P[0*N+2] += q * dt3 / 2.f;   P[2*N+0] += q * dt3 / 2.f;
     P[1*N+3] += q * dt3 / 2.f;   P[3*N+1] += q * dt3 / 2.f;
+
+    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
+    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
 }
 
 void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_weight) {
@@ -159,6 +165,9 @@ void kalman_predict_ca(Track& track, double dt_d) {
     P[3*N+5] += q * dt2 / 2.f;   P[5*N+3] += q * dt2 / 2.f;
     P[4*N+4] += q * dt;
     P[5*N+5] += q * dt;
+
+    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
+    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
 }
 
 void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight) {

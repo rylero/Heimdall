@@ -5,6 +5,10 @@
 inline constexpr float MEAS_NOISE_R    = 0.04f;
 // Process noise intensity. Higher = trust detections more, allow faster acceleration.
 inline constexpr float PROCESS_NOISE_Q = 2.0f;
+// Minimum position covariance diagonal. Prevents Kalman gain collapsing to ~0 on long tracks,
+// which would cause the track to freeze even when detections are within the Euclidean gate.
+// Floor=0.01 gives K >= 0.01/(0.01+0.04) = 0.2 (20% measurement weight minimum).
+inline constexpr float POS_COV_FLOOR   = 0.01f;
 
 // Per-model predict (each uses its own stride N = 2, 4, or 6).
 void kalman_predict_cp(Track& track, double dt);
