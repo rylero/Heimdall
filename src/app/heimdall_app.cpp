@@ -25,8 +25,18 @@ HeimdallApp::HeimdallApp(Config config)
 HeimdallApp::~HeimdallApp() { stop(); }
 
 void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
-    const uint64_t timestamp_ns  = dets.empty() ? 0ULL : dets.front().timestamp_ns;
-    const uint64_t capture_ns    = dets.empty() ? 0ULL : dets.front().capture_monotonic_ns;
+    // Frames with zero detected objects carry no buf_pts here -- feeding the tracker a
+    // fabricated timestamp of 0 corrupts every track's last_update_s, producing a huge
+    // dt (and exploding covariance) on the next real-detection frame. Send a heartbeat
+    // with the last known-good timestamp instead and skip tracker processing entirely.
+    if (dets.empty()) {
+        comm_.send_frame({}, last_timestamp_ns_, /*healthy=*/true);
+        return;
+    }
+
+    const uint64_t timestamp_ns  = dets.front().timestamp_ns;
+    const uint64_t capture_ns    = dets.front().capture_monotonic_ns;
+    last_timestamp_ns_ = timestamp_ns;
 
     // Select the robot pose whose Jetson reception time is closest to the camera
     // capture time, compensating for DeepStream pipeline latency (typically 20–60 ms).
