@@ -71,13 +71,14 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
             extr.at("roll").get<float>()
         );
 
-        // Flips happen before nvinfer, so bbox coords are in flipped image space.
-        // For an inverted camera (180° roll), the corrected axes become:
-        //   std_u = (px_flip - (W-1-cx)) / fx
-        //   std_v = (py_flip - (H-1-cy)) / fy
-        // fx/fy stay positive — only the principal point is mirrored.
-        if (cfg.flip_h)
+        // Flips happen before nvinfer; adjust intrinsics for flipped bbox coords.
+        // flip_h: mirrors left/right → negate fx so u direction is correct.
+        // flip_v: mirrors top/bottom → mirror cy only (negating fy inverts
+        //         the vertical ray and causes close objects to project farther).
+        if (cfg.flip_h) {
             params.intrinsics.cx = static_cast<float>(cfg.width)  - 1.f - params.intrinsics.cx;
+            params.intrinsics.fx = -params.intrinsics.fx;
+        }
         if (cfg.flip_v)
             params.intrinsics.cy = static_cast<float>(cfg.height) - 1.f - params.intrinsics.cy;
 
