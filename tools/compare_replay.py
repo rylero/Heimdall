@@ -67,7 +67,7 @@ def camera_sees_floor(cam):
 def make_sim_cameras():
     cams = []
     for i, (tx, ty) in enumerate([(0.20, 0.15), (0.20, -0.15)]):
-        R = rotation_from_euler(0.0, math.radians(70.0), 0.0)
+        R = rotation_from_euler(0.0, math.radians(45.0), 0.0)
         cams.append({'id': i, 'width': 640, 'height': 480,
                      'fx': 600.0, 'fy': 600.0, 'cx': 320.0, 'cy': 240.0,
                      'tx': tx, 'ty': ty, 'tz': 0.30,
@@ -234,29 +234,54 @@ class SimpleTracker:
         return [t for t in self.tracks if t.hits >= self.CONFIRM]
 
 
+# ── Recording loader (call once) ──────────────────────────────────────────────
+
+def load_recording(path):
+    """Parse JSONL → (pose_list, frames) with monotonic _ts_ns on each frame."""
+    import random as _rnd
+    poses, frames = {}, []
+    with open(path) as f:
+        for line in f:
+            j = json.loads(line)
+            if j['t'] == 'pose':
+                poses[j['recv_ns']] = (j['x'], j['y'], j['heading'])
+            elif j['t'] == 'frame':
+                frames.append(j)
+
+    pose_list = sorted(poses.items())
+
+    frame_dt_ns = int(1e9 / 30)
+    prev_ts = None
+    for fr in frames:
+        if fr['dets']:
+            ts = fr['dets'][0]['cap_ns']
+            if prev_ts and ts > prev_ts:
+                frame_dt_ns = ts - prev_ts
+                break
+            prev_ts = ts
+
+    first_idx = next((i for i, fr in enumerate(frames) if fr['dets']), None)
+    if first_idx is not None:
+        t0 = frames[first_idx]['dets'][0]['cap_ns']
+        for i, fr in enumerate(frames):
+            fr['_ts_ns'] = t0 + (i - first_idx) * frame_dt_ns
+    else:
+        for i, fr in enumerate(frames):
+            fr['_ts_ns'] = i * frame_dt_ns
+
+    return pose_list, frames
+
+
 # ── Replay engine ─────────────────────────────────────────────────────────────
 
-def run_replay(recording_path, cameras):
+def run_replay(pose_list, frames, cameras, noise_px=0.0, miss_rate=0.0, rng_seed=0):
     """
-    Load recording, project detections to field space, run simple tracker.
-    Returns list of replay frames: [{ts_ns, robot_x, robot_y, raw_dets, tracks}]
+    Project detections → field, run tracker.
+    noise_px: extra Gaussian pixel noise added on top of recorded detections.
+    miss_rate: fraction [0,1] of detections randomly dropped per frame.
     """
-    with open(recording_path) as f:
-        lines = f.readlines()
-
-    poses  = {}   # recv_ns -> (x, y, heading)
-    frames = []
-
-    for line in lines:
-        j = json.loads(line)
-        t = j['t']
-        if t == 'pose':
-            poses[j['recv_ns']] = (j['x'], j['y'], j['heading'])
-        elif t == 'frame':
-            frames.append(j)
-
-    # Build sorted pose list for closest-lookup
-    pose_list = sorted(poses.items())  # [(recv_ns, (x,y,h)), ...]
+    import random as _rnd
+    rng = _rnd.Random(rng_seed)
 
     def closest_pose(target_ns):
         if not pose_list: return 0.0, 0.0, 0.0
@@ -270,30 +295,6 @@ def run_replay(recording_path, cameras):
                 break
         return best
 
-    # Assign monotonic timestamps to every frame (including empty ones).
-    # Empty frames carry ts_ns=0 from the recorder, which breaks the tracker's
-    # dt computation (first real frame looks like 1.75e9 seconds later).
-    # Recover frame_dt by scanning the first few real frames.
-    frame_dt_ns = int(1e9 / 30)
-    prev_real_ts = None
-    for fr in frames:
-        if fr['dets']:
-            ts = fr['dets'][0]['cap_ns']
-            if prev_real_ts and ts > prev_real_ts:
-                frame_dt_ns = ts - prev_real_ts
-                break
-            prev_real_ts = ts
-
-    # Find the first real timestamp and assign monotonically from it.
-    first_real_idx = next((i for i, fr in enumerate(frames) if fr['dets']), None)
-    if first_real_idx is not None:
-        t0 = frames[first_real_idx]['dets'][0]['cap_ns']
-        for i, fr in enumerate(frames):
-            fr['_ts_ns'] = t0 + (i - first_real_idx) * frame_dt_ns
-    else:
-        for i, fr in enumerate(frames):
-            fr['_ts_ns'] = i * frame_dt_ns
-
     tracker = SimpleTracker()
     replay_frames = []
 
@@ -305,16 +306,19 @@ def run_replay(recording_path, cameras):
             pose = closest_pose(ts_ns)
             replay_frames.append({'ts_ns': ts_ns, 'robot': pose, 'raw': [], 'tracks': []})
             continue
-        pose  = closest_pose(ts_ns)
+
+        pose = closest_pose(ts_ns)
         rx, ry, rh = pose
 
         raw = []
         for d in dets:
+            if miss_rate > 0 and rng.random() < miss_rate:
+                continue
             cam = next((c for c in cameras if c['id'] == d['cam']), None)
-            if cam is None: continue
-            # pose_estimator uses bottom-centre: px = l+w/2, py = top+h
-            px = d['l'] + d['w'] / 2
-            py = d['top'] + d['h']
+            if cam is None:
+                continue
+            px = d['l'] + d['w'] / 2 + rng.gauss(0, noise_px)
+            py = d['top'] + d['h']    + rng.gauss(0, noise_px)
             pt = pixel_to_field(cam, px, py, rx, ry, rh)
             if pt:
                 raw.append(pt)
@@ -336,18 +340,86 @@ def run_replay(recording_path, cameras):
 WIN_W, WIN_H = 1280, 720
 SCALE0 = 120   # pixels per metre at default zoom
 
+
+class Slider:
+    H = 12
+
+    def __init__(self, x, y, w, label, val_min, val_max, initial, fmt="{:.1f}"):
+        self.rect     = pygame.Rect(x, y, w, self.H)
+        self.label    = label
+        self.val_min  = val_min
+        self.val_max  = val_max
+        self.val      = float(initial)
+        self.fmt      = fmt
+        self.dragging = False
+
+    def _clamp(self, v):
+        return max(self.val_min, min(self.val_max, v))
+
+    def handle_event(self, ev):
+        """Return True if value changed."""
+        if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            if self.rect.collidepoint(ev.pos):
+                self.dragging = True
+                frac = (ev.pos[0] - self.rect.x) / self.rect.w
+                self.val = self._clamp(self.val_min + frac * (self.val_max - self.val_min))
+                return True
+        elif ev.type == pygame.MOUSEBUTTONUP and ev.button == 1:
+            self.dragging = False
+        elif ev.type == pygame.MOUSEMOTION and self.dragging:
+            frac = (ev.pos[0] - self.rect.x) / self.rect.w
+            new  = self._clamp(self.val_min + frac * (self.val_max - self.val_min))
+            if new != self.val:
+                self.val = new
+                return True
+        return False
+
+    def draw(self, surf, font):
+        filled = int((self.val - self.val_min) / (self.val_max - self.val_min) * self.rect.w)
+        pygame.draw.rect(surf, (60, 60, 60),   self.rect)
+        pygame.draw.rect(surf, (100, 180, 120), pygame.Rect(self.rect.x, self.rect.y, filled, self.H))
+        pygame.draw.rect(surf, (180, 180, 180), self.rect, 1)
+        lbl = font.render(f"{self.label}: {self.fmt.format(self.val)}", True, (220, 220, 220))
+        surf.blit(lbl, (self.rect.x, self.rect.y - 14))
+
+
 class Viz:
-    def __init__(self, replay_frames, gt_frames):
-        self.replay = replay_frames
-        self.gt     = gt_frames
-        self.n      = max(len(replay_frames), len(gt_frames))
-        self.idx    = 0
-        self.paused = False
-        self.scale  = SCALE0
-        self.pan_x  = WIN_W // 2
-        self.pan_y  = WIN_H // 2
-        self.t_last = time.monotonic()
-        self.gt_map = {f['ts_ns']: f for f in gt_frames}
+    def __init__(self, replay_frames, gt_frames, pose_list, raw_frames, cameras):
+        self.replay     = replay_frames
+        self.gt         = gt_frames
+        self.pose_list  = pose_list
+        self.raw_frames = raw_frames
+        self.cameras    = cameras
+        self.n          = max(len(replay_frames), len(gt_frames))
+        self.idx        = 0
+        self.paused     = False
+        self.scale      = SCALE0
+        self.pan_x      = WIN_W // 2
+        self.pan_y      = WIN_H // 2
+        self.t_last     = time.monotonic()
+        self.gt_map     = {f['ts_ns']: f for f in gt_frames}
+        self._rng_seed  = 0
+
+        SL_Y  = WIN_H - 52
+        SL_W  = 220
+        self.sl_noise = Slider(20,        SL_Y, SL_W, "Noise (px)",  0.0, 20.0, 0.0, "{:.1f}")
+        self.sl_miss  = Slider(20+SL_W+40, SL_Y, SL_W, "Miss rate",  0.0, 0.70, 0.0, "{:.0%}")
+        self._sliders = [self.sl_noise, self.sl_miss]
+
+    def _rerun(self):
+        self._rng_seed += 1
+        self.replay = run_replay(
+            self.pose_list, self.raw_frames, self.cameras,
+            noise_px=self.sl_noise.val,
+            miss_rate=self.sl_miss.val,
+            rng_seed=self._rng_seed,
+        )
+        self.n = max(len(self.replay), len(self.gt))
+
+    def handle_slider_events(self, ev):
+        changed = any(sl.handle_event(ev) for sl in self._sliders)
+        if changed:
+            self._rerun()
 
     def field_to_screen(self, fx, fy):
         sx = int(self.pan_x + fx * self.scale)
@@ -465,6 +537,10 @@ class Viz:
             surf.blit(font.render(label, True, (220,220,220)), (32, ly))
             ly += 18
 
+        # ── Sliders ───────────────────────────────────────────────────────────
+        for sl in self._sliders:
+            sl.draw(surf, font)
+
         # ── HUD ───────────────────────────────────────────────────────────────
         progress = self.idx / max(1, self.n-1)
         ts_s = rf['ts_ns'] / 1e9
@@ -496,8 +572,11 @@ def main():
         print("[compare] Config cameras face up — using built-in sim cameras")
         cameras = make_sim_cameras()
 
-    print(f"[compare] Running Python replay on {args.recording}...")
-    replay_frames = run_replay(args.recording, cameras)
+    print(f"[compare] Loading {args.recording}...")
+    pose_list, raw_frames = load_recording(args.recording)
+
+    print(f"[compare] Running initial replay ({len(raw_frames)} frames)...")
+    replay_frames = run_replay(pose_list, raw_frames, cameras)
     print(f"[compare] {len(replay_frames)} replay frames")
 
     with open(args.ground_truth) as f:
@@ -511,7 +590,7 @@ def main():
     big    = pygame.font.SysFont("monospace", 14, bold=True)
     ticker = pygame.time.Clock()
 
-    viz = Viz(replay_frames, gt_frames)
+    viz = Viz(replay_frames, gt_frames, pose_list, raw_frames, cameras)
 
     while True:
         for ev in pygame.event.get():
@@ -529,6 +608,7 @@ def main():
                     viz.idx = max(viz.idx - 1, 0)
             if ev.type == pygame.MOUSEWHEEL:
                 viz.scale = max(20, min(600, int(viz.scale * (1.15 if ev.y > 0 else 0.87))))
+            viz.handle_slider_events(ev)
 
         viz.advance()
         viz.draw(screen, clock, big)

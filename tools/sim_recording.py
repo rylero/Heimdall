@@ -71,7 +71,7 @@ def make_sim_cameras():
     Two floor-facing cameras (pitch=+70 deg) on left and right of robot front."""
     cameras = []
     for i, (tx, ty) in enumerate([(0.20, 0.15), (0.20, -0.15)]):
-        pitch = math.radians(70.0)  # positive = looking down per camera_params.h convention
+        pitch = math.radians(45.0)  # 45° gives ~0.9m forward sight range at 0.30m height
         R = rotation_from_euler(0.0, pitch, 0.0)
         cameras.append({
             'id':           i,
@@ -243,7 +243,7 @@ def main():
     if not any(camera_sees_floor(c) for c in cameras):
         print("[sim] WARNING: configured cameras cannot see the floor "
               "(cam Z points up -- likely wrong pitch sign in placeholder config).")
-        print("[sim] Using built-in simulation cameras (pitch=70 deg downward).")
+        print("[sim] Using built-in simulation cameras (pitch=45 deg downward).")
         cameras = make_sim_cameras()
         for c in cameras:
             print(f"      sim cam {c['id']}: tx={c['tx']:.2f} ty={c['ty']:.2f} tz={c['tz']:.2f}")
