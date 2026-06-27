@@ -130,6 +130,12 @@ void HeimdallApp::det_worker_loop() {
 void HeimdallApp::pose_recv_loop() {
     while (running_) {
         if (auto p = comm_.try_recv_pose()) {
+            if (at_detector_) {
+                at_detector_->update_gyro(
+                    static_cast<double>(p->pose.heading),
+                    static_cast<double>(p->pose.vyaw),
+                    p->jetson_recv_ns);
+            }
             pose_buffer_.push(*p);
         }
         std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -138,8 +144,7 @@ void HeimdallApp::pose_recv_loop() {
 
 void HeimdallApp::apriltag_loop() {
     while (running_) {
-        RobotPose cur = pose_buffer_.closest(0); // get latest pose for disambiguation
-        auto result = at_detector_->detect(cur.x, cur.y);
+        auto result = at_detector_->detect();
         if (result) {
             comm_.send_vision_pose(
                 static_cast<float>(result->x),

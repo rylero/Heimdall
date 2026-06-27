@@ -6,6 +6,7 @@ message RobotPoseMsg {
     float  y            = 2;
     float  heading      = 3;
     uint64 timestamp_ns = 4;
+    float  vyaw         = 5;  // angular velocity rad/s (CCW positive), for constrained PnP
 }
 
 message TrackedObjectMsg {

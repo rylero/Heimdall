@@ -39,7 +39,7 @@ std::optional<CommLayer::TimestampedPose> CommLayer::try_recv_pose() {
                            + static_cast<uint64_t>(ts.tv_nsec);
 
     return TimestampedPose{
-        RobotPose{proto.x(), proto.y(), proto.heading(), proto.timestamp_ns()},
+        RobotPose{proto.x(), proto.y(), proto.heading(), proto.vyaw(), proto.timestamp_ns()},
         recv_ns
     };
 }

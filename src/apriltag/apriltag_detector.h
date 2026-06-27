@@ -1,5 +1,6 @@
 #pragma once
 #include "tag_layout.h"
+#include <cstdint>
 #include <optional>
 
 struct VisionPoseResult {
@@ -13,9 +14,14 @@ public:
     explicit AprilTagDetector(AprilTagLayout layout);
     ~AprilTagDetector();
 
-    // Captures one frame, detects tags, runs PnP.
-    // Returns the best (lowest-ambiguity) pose estimate, or nullopt if nothing reliable.
-    std::optional<VisionPoseResult> detect(double current_robot_x, double current_robot_y);
+    // Feed a robot pose sample into the gyro history buffer (call at ~50 Hz from pose_recv_loop).
+    // yaw: field-relative heading radians; vyaw: rad/s CCW positive; timestamp_ns: Jetson CLOCK_MONOTONIC.
+    void update_gyro(double yaw, double vyaw, uint64_t timestamp_ns);
+
+    // Capture one frame, detect tags, solve pose.
+    // Uses constrained linear solve (rotation from gyro) when gyro stream is fresh;
+    // falls back to IPPE_SQUARE + floor-constraint disambiguation otherwise.
+    std::optional<VisionPoseResult> detect();
 
     bool is_open() const;
 

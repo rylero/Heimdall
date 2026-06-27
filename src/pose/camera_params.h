@@ -21,9 +21,10 @@ struct CameraParams {
 
 // Robot position and heading in field frame (WPiLib standard coordinates).
 struct RobotPose {
-    float    x, y;          // field-relative, meters
-    float    heading;       // radians, CCW positive from +X axis
-    uint64_t timestamp_ns = 0; // RoboRIO-side timestamp from the pose packet (forwarded back in DetectionFrame)
+    float    x, y;            // field-relative, meters
+    float    heading;         // radians, CCW positive from +X axis
+    float    vyaw   = 0.0f;   // angular velocity rad/s (CCW positive), from gyro
+    uint64_t timestamp_ns = 0; // RoboRIO-side timestamp from the pose packet
 };
 
 // Build a camera->robot rotation matrix from mounting angles.

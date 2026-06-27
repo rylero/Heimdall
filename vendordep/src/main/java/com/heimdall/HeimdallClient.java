@@ -88,12 +88,25 @@ public final class HeimdallClient implements AutoCloseable {
      * @param headingRad field-relative heading, radians CCW from +X
      */
     public void sendPose(double x, double y, double headingRad) {
-        sendPose(x, y, headingRad, System.nanoTime());
+        sendPose(x, y, headingRad, 0.0, System.nanoTime());
     }
 
-    /** Same as {@link #sendPose(double, double, double)} with an explicit timestamp. */
-    public void sendPose(double x, double y, double headingRad, long timestampNs) {
-        pendingPose.set(new PoseSnapshot(x, y, headingRad, timestampNs));
+    /**
+     * Queue a robot pose with gyro angular velocity for constrained PnP on the Jetson.
+     * Providing vyaw enables the Whacknet-style translation-only solve, eliminating tag ambiguity.
+     *
+     * @param x             field-relative x, meters
+     * @param y             field-relative y, meters
+     * @param headingRad    field-relative heading, radians CCW from +X
+     * @param vyawRadPerSec angular velocity rad/s CCW positive (e.g. {@code Math.toRadians(navX.getRate())})
+     */
+    public void sendPose(double x, double y, double headingRad, double vyawRadPerSec) {
+        pendingPose.set(new PoseSnapshot(x, y, headingRad, (float) vyawRadPerSec, System.nanoTime()));
+    }
+
+    /** Same as {@link #sendPose(double, double, double, double)} with an explicit timestamp. */
+    public void sendPose(double x, double y, double headingRad, double vyawRadPerSec, long timestampNs) {
+        pendingPose.set(new PoseSnapshot(x, y, headingRad, (float) vyawRadPerSec, timestampNs));
     }
 
     /**
@@ -167,7 +180,7 @@ public final class HeimdallClient implements AutoCloseable {
                 if (pose != null) {
                     byte[] bytes = ProtoWriter.serializeRobotPose(
                             (float) pose.x, (float) pose.y,
-                            (float) pose.headingRad, pose.timestampNs);
+                            (float) pose.headingRad, pose.timestampNs, pose.vyaw);
                     push.send(bytes, ZMQ.DONTWAIT);
                 }
 
@@ -209,12 +222,14 @@ public final class HeimdallClient implements AutoCloseable {
 
     private static final class PoseSnapshot {
         final double x, y, headingRad;
-        final long timestampNs;
+        final float  vyaw;
+        final long   timestampNs;
 
-        PoseSnapshot(double x, double y, double headingRad, long timestampNs) {
+        PoseSnapshot(double x, double y, double headingRad, float vyaw, long timestampNs) {
             this.x           = x;
             this.y           = y;
             this.headingRad  = headingRad;
+            this.vyaw        = vyaw;
             this.timestampNs = timestampNs;
         }
     }

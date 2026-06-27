@@ -11,19 +11,29 @@ import java.io.ByteArrayOutputStream;
  *     float  y            = 2;   tag 0x15
  *     float  heading      = 3;   tag 0x1D
  *     uint64 timestamp_ns = 4;   tag 0x20 (field 4, wire 0 = varint)
+ *     float  vyaw         = 5;   tag 0x2D (field 5, wire 5 = 32-bit)
  *   }
  */
 public final class ProtoWriter {
     private ProtoWriter() {}
 
+    /** Serialize without vyaw (backward-compatible; vyaw defaults to 0 on Jetson). */
     public static byte[] serializeRobotPose(float x, float y, float heading, long timestampNs) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(28);
+        return serializeRobotPose(x, y, heading, timestampNs, 0.0f);
+    }
+
+    /** Serialize with gyro angular velocity for constrained PnP interpolation on the Jetson. */
+    public static byte[] serializeRobotPose(float x, float y, float heading, long timestampNs, float vyaw) {
+        ByteArrayOutputStream out = new ByteArrayOutputStream(33);
         writeFloat(out, 1, x);
         writeFloat(out, 2, y);
         writeFloat(out, 3, heading);
         if (timestampNs != 0) {
             writeTag(out, 4, 0); // varint
             writeVarint(out, timestampNs);
+        }
+        if (vyaw != 0.0f) {
+            writeFloat(out, 5, vyaw);
         }
         return out.toByteArray();
     }
