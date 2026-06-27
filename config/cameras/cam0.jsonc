@@ -1,10 +1,10 @@
 {
   "id": 0,
   "type": "usb",
-  "device": "/dev/video4",
+  "device": "/dev/video0",
   "width": 640,
   "height": 480,
-  "fps": 60,
+  "fps": 100,
   "hw_decode": false,
   "mirror_of": -1,
   "flip_h": true,
