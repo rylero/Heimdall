@@ -52,9 +52,9 @@
 
   // CSV tracker debug log (one row per update cycle).
   "log_tracking": true,
-  "log_path": "logs/tracker_log.csv"
+  "log_path": "logs/tracker_log.csv",
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  // "apriltag_layout": "config/apriltag_layout.jsonc"  // disabled: all 3 cameras share USB 2.0 HS bus (480Mbps), 3 cameras exceed capacity
+  "apriltag_layout": "config/apriltag_layout.jsonc"
 }
