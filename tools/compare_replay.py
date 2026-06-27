@@ -265,19 +265,39 @@ def run_replay(recording_path, cameras):
                 break
         return best
 
+    # Assign monotonic timestamps to every frame (including empty ones).
+    # Empty frames carry ts_ns=0 from the recorder, which breaks the tracker's
+    # dt computation (first real frame looks like 1.75e9 seconds later).
+    # Recover frame_dt by scanning the first few real frames.
+    frame_dt_ns = int(1e9 / 30)
+    prev_real_ts = None
+    for fr in frames:
+        if fr['dets']:
+            ts = fr['dets'][0]['cap_ns']
+            if prev_real_ts and ts > prev_real_ts:
+                frame_dt_ns = ts - prev_real_ts
+                break
+            prev_real_ts = ts
+
+    # Find the first real timestamp and assign monotonically from it.
+    first_real_idx = next((i for i, fr in enumerate(frames) if fr['dets']), None)
+    if first_real_idx is not None:
+        t0 = frames[first_real_idx]['dets'][0]['cap_ns']
+        for i, fr in enumerate(frames):
+            fr['_ts_ns'] = t0 + (i - first_real_idx) * frame_dt_ns
+    else:
+        for i, fr in enumerate(frames):
+            fr['_ts_ns'] = i * frame_dt_ns
+
     tracker = SimpleTracker()
     replay_frames = []
 
     for frame in frames:
         dets  = frame['dets']
-        # Use cap_ns from first detection; fall back to last known ts so timing stays monotonic
-        if dets:
-            ts_ns = dets[0]['cap_ns']
-        else:
-            ts_ns = replay_frames[-1]['ts_ns'] if replay_frames else 0
+        ts_ns = frame['_ts_ns']
 
         if not dets:
-            pose = closest_pose(ts_ns) if ts_ns else (0.0, 0.0, 0.0)
+            pose = closest_pose(ts_ns)
             replay_frames.append({'ts_ns': ts_ns, 'robot': pose, 'raw': [], 'tracks': []})
             continue
         pose  = closest_pose(ts_ns)

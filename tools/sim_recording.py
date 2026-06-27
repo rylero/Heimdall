@@ -278,11 +278,11 @@ def main():
                              vx=robot_speed * 0.6, vy=0.0))
     oid += 1
 
-    # 4. Two objects close together (challenging for tracker separation, class 0)
+    # 4. Two objects close together — separated enough to be individually gatable (class 0)
     cluster_x = drive_len * 0.68
-    objects.append(SimObject(oid, 0, x0=cluster_x,        y0=0.10))
+    objects.append(SimObject(oid, 0, x0=cluster_x,        y0=0.30))
     oid += 1
-    objects.append(SimObject(oid, 0, x0=cluster_x + 0.18, y0=-0.10))
+    objects.append(SimObject(oid, 0, x0=cluster_x + 0.20, y0=-0.30))
     oid += 1
 
     print(f"[sim] {len(objects)} objects ({sum(1 for o in objects if o.vx==0 and o.vy==0)} static,"
