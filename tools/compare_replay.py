@@ -128,7 +128,7 @@ def pixel_to_field(cam, px, py, robot_x, robot_y, robot_heading):
     t = -cam['tz'] / dfz
     fx = ofx + t * dfx
     fy = ofy + t * dfy
-    return apply_fudge(fx, fy)
+    return fx, fy
 
 
 # ── Simple Kalman tracker ─────────────────────────────────────────────────────

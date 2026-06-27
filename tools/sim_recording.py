@@ -165,12 +165,13 @@ def inv_fudge(gx, gy):
 def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radius=0.12):
     """
     Projects a field-space circle through the camera model -> pixel bbox.
-    Pre-applies inv_fudge so that the C++ pipeline's forward fudge cancels out,
-    leaving track output exactly at (obj_x, obj_y).
     Returns (left, top, width, height) or None if not visible.
+
+    NOTE: We do NOT apply inv_fudge here. The C++ fudge is calibrated at close
+    range from field origin, so applying it to objects far down the field pushes
+    their pre-compensated positions outside the camera's reachable FOV. Accept
+    a small systematic offset vs ground truth instead.
     """
-    # Pre-compensate for pose_estimator.cpp fudge factor
-    obj_x, obj_y = inv_fudge(obj_x, obj_y)
 
     # Field -> robot frame  (R(-heading) * delta)
     cos_h = math.cos(robot_heading);  sin_h = math.sin(robot_heading)
