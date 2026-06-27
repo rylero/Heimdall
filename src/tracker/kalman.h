@@ -18,8 +18,8 @@ void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_we
 void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp);
 
 // Dispatchers — called by jpda.cpp; route to the correct model function via track.model.
-void kalman_predict(Track& track, double dt, const KalmanParams& kp);
-void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp);
+void kalman_predict(Track& track, double dt, const KalmanParams& kp = {});
+void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp = {});
 
 // Construct a new tentative track with the given filter model.
 Track make_track(uint32_t id, int class_id, float x, float y,

@@ -110,9 +110,28 @@ Key parameters in `heimdall.jsonc`:
 
 ## Step 4 — Build Docker image 🔧
 
-### Option A — Build on Windows, deploy to Jetson (competition)
+### Option A — Build Docker image on the Jetson (development + competition)
 
-Build on your Windows machine from the project root:
+Build directly on the Jetson — no cross-compilation, no image transfer. Native arm64 so the build is fast and the environment matches production exactly.
+
+```bash
+# On the Jetson, from ~/Heimdall/
+git pull
+docker build --tag heimdall:latest --file docker/Dockerfile .
+```
+
+> **First build:** ~15–20 min (compiles libzmq, protobuf, Catch2 natively). Subsequent builds with only source changes take ~1–2 min thanks to layer caching.
+
+Run it:
+
+```bash
+cd docker/
+docker compose up
+```
+
+### Option B — Build on Windows, deploy to Jetson (if Jetson is unavailable)
+
+Cross-compiles for arm64 under QEMU emulation — slow but works without the Jetson present.
 
 ```powershell
 docker buildx build `
@@ -122,11 +141,10 @@ docker buildx build `
   --file docker/Dockerfile .
 ```
 
-> **First build takes 30–60 minutes** under QEMU ARM64 emulation (compiling libzmq, protobuf, Catch2). Subsequent builds hit the layer cache and take < 5 minutes (only your changed source files recompile).
-
-Export and copy to Jetson:
+> **First build takes 30–60 minutes** under emulation. Export with 7-Zip and transfer:
 
 ```powershell
+docker save heimdall:latest -o heimdall.tar
 & "C:\Program Files\7-Zip\7z.exe" a -tgzip -mx=1 heimdall.tar.gz heimdall.tar
 scp heimdall.tar.gz jetson@<JETSON_IP>:~
 ```
@@ -136,29 +154,6 @@ On the Jetson:
 ```bash
 docker load < ~/heimdall.tar.gz
 ```
-
-### Option B — Build natively on the Jetson (development)
-
-Much faster for iteration — no cross-compilation or image transfer overhead.
-
-```bash
-# On the Jetson
-git clone https://github.com/rylero/Heimdall.git
-cd Heimdall
-PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig cmake -B build \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel $(nproc)
-```
-
-Subsequent iterations after changes:
-
-```bash
-git pull
-cmake --build build --parallel $(nproc)
-./build/heimdall config/heimdall.jsonc
-```
-
-> Use Option B during active development and Option A for competition deployment where you want a hermetically sealed, reproducible environment.
 
 ---
 
