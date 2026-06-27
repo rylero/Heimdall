@@ -247,22 +247,49 @@ def main():
         for c in cameras:
             print(f"      sim cam {c['id']}: tx={c['tx']:.2f} ty={c['ty']:.2f} tz={c['tz']:.2f}")
 
-    # Robot drives along +X at constant speed; cameras sweep past fixed floor objects.
-    # Objects are placed at y-offsets matching each camera's lateral position (ty),
-    # distributed across 25%, 60%, and 85% of the total drive distance.
+    # Robot drives along +X at constant speed; cameras sweep over a mix of
+    # static and moving objects with varied class IDs.
     robot_speed   = 0.4     # m/s along +X
     robot_heading = 0.0     # always facing +X
+    drive_len     = robot_speed * args.duration  # total X travel
+
+    # Camera lateral offsets (used to place objects in each camera's swept lane)
+    cam_tys = [c['ty'] for c in cameras]
+    if not cam_tys:
+        cam_tys = [0.15, -0.15]
 
     objects = []
-    for cam in cameras:
-        for frac in (0.25, 0.60, 0.85):
-            ox = robot_speed * args.duration * frac
-            oy = cam['ty']
-            objects.append(SimObject(len(objects), 0, x0=ox, y0=oy))
+    oid = 0
 
-    print(f"[sim] {len(objects)} static objects spread across {args.duration:.0f}s path:")
+    # 1. Static objects at 25 / 55 / 80 % along path, alternating lanes + class IDs
+    for frac, cls in zip((0.25, 0.55, 0.80), (0, 1, 0)):
+        ox = drive_len * frac
+        for ty in cam_tys:
+            objects.append(SimObject(oid, cls, x0=ox, y0=ty))
+            oid += 1
+
+    # 2. Moving object: crosses the robot's path diagonally (class 1)
+    #    Starts behind the robot's starting X, moves at +0.15 m/s in X and +0.2 m/s in Y
+    objects.append(SimObject(oid, 1, x0=drive_len * 0.35, y0=-0.6, vx=0.0, vy=0.25))
+    oid += 1
+
+    # 3. Moving object: drifts parallel to robot, slightly faster (class 2)
+    objects.append(SimObject(oid, 2, x0=drive_len * 0.1, y0=cam_tys[0] * 0.5,
+                             vx=robot_speed * 0.6, vy=0.0))
+    oid += 1
+
+    # 4. Two objects close together (challenging for tracker separation, class 0)
+    cluster_x = drive_len * 0.68
+    objects.append(SimObject(oid, 0, x0=cluster_x,        y0=0.10))
+    oid += 1
+    objects.append(SimObject(oid, 0, x0=cluster_x + 0.18, y0=-0.10))
+    oid += 1
+
+    print(f"[sim] {len(objects)} objects ({sum(1 for o in objects if o.vx==0 and o.vy==0)} static,"
+          f" {sum(1 for o in objects if o.vx!=0 or o.vy!=0)} moving):")
     for o in objects:
-        print(f"      obj {o.obj_id}: field ({o.x0:.2f}, {o.y0:.2f}) m")
+        moving = f" v=({o.vx:.2f},{o.vy:.2f})" if (o.vx or o.vy) else " static"
+        print(f"      obj {o.obj_id} cls={o.class_id}: field ({o.x0:.2f}, {o.y0:.2f}){moving}")
 
     # Timing
     pose_dt_ns  = int(1e9 / args.pose_hz)
@@ -296,7 +323,8 @@ def main():
 
         for obj in objects:
             ox, oy = obj.position(t_s)
-            gt.append({'obj_id': obj.obj_id, 'class_id': obj.class_id, 'x': ox, 'y': oy})
+            gt.append({'obj_id': obj.obj_id, 'class_id': obj.class_id,
+                       'x': ox, 'y': oy, 'vx': obj.vx, 'vy': obj.vy})
 
             for cam in cameras:
                 bbox = field_to_pixel(cam, robot_x, 0.0, robot_heading, ox, oy)

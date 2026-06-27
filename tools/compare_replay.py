@@ -140,9 +140,9 @@ TRACK_COLORS = [
 ]
 
 class Track:
-    Q = 2.0   # process noise
-    R = 0.16  # measurement noise
-    GATE = 1.2  # metres
+    Q    = 2.0   # process noise (m²/s²)
+    R    = 0.16  # measurement noise (m²)
+    GATE = 0.8   # base gate radius (m)
 
     def __init__(self, tid, x, y):
         self.id   = tid
@@ -158,20 +158,26 @@ class Track:
         self.pxx += self.Q * dt * dt
         self.pyy += self.Q * dt * dt
 
-    def update(self, mx, my):
+    def update(self, mx, my, dt):
         kx = self.pxx / (self.pxx + self.R)
         ky = self.pyy / (self.pyy + self.R)
         innov_x = mx - self.x;  innov_y = my - self.y
-        # Velocity smoothed from position innovation
-        alpha = 0.3
-        self.vx = (1 - alpha) * self.vx + alpha * innov_x
-        self.vy = (1 - alpha) * self.vy + alpha * innov_y
+        new_vx = innov_x / max(dt, 1e-3)
+        new_vy = innov_y / max(dt, 1e-3)
+        alpha = 0.25
+        self.vx = (1 - alpha) * self.vx + alpha * new_vx
+        self.vy = (1 - alpha) * self.vy + alpha * new_vy
         self.x  += kx * innov_x
         self.y  += ky * innov_y
         self.pxx *= (1 - kx)
         self.pyy *= (1 - ky)
         self.hits += 1
         self.miss  = 0
+
+    def gate(self):
+        # Shrink gate proportionally as misses accumulate — prevents
+        # coasting tracks from stealing detections that belong to new objects.
+        return Track.GATE * max(0.25, 1.0 - 0.3 * self.miss)
 
 
 class SimpleTracker:
@@ -182,24 +188,32 @@ class SimpleTracker:
         self.tracks: list[Track] = []
         self.next_id = 1
         self.last_ts = None
+        self.last_dt = 0.033
 
     def update(self, detections, timestamp_s):
         dt = (timestamp_s - self.last_ts) if self.last_ts else 0.033
+        dt = max(dt, 1e-3)
         self.last_ts = timestamp_s
+        self.last_dt = dt
 
         for t in self.tracks:
             t.predict(dt)
 
         assigned = set()
-        for t in self.tracks:
+        # Confirmed tracks (high hits) get first pick to prevent tentative
+        # tracks from stealing detections.
+        sorted_tracks = sorted(self.tracks, key=lambda t: -t.hits)
+        for t in sorted_tracks:
             best_d, best_i = float('inf'), None
+            g = t.gate()
             for i, (dx, dy) in enumerate(detections):
-                if i in assigned: continue
+                if i in assigned:
+                    continue
                 d = math.hypot(t.x - dx, t.y - dy)
-                if d < Track.GATE and d < best_d:
+                if d < g and d < best_d:
                     best_d, best_i = d, i
             if best_i is not None:
-                t.update(*detections[best_i])
+                t.update(*detections[best_i], dt)
                 assigned.add(best_i)
             else:
                 t.miss += 1
@@ -371,9 +385,16 @@ class Viz:
             closest_gt = min(self.gt, key=lambda f: abs(f['ts_ns'] - rf['ts_ns']))
             for obj in closest_gt.get('objects', []):
                 gx, gy = self.field_to_screen(obj['x'], obj['y'])
-                pygame.draw.circle(surf, (0, 230, 80), (gx, gy), 12)
+                cls_colors = [(0, 230, 80), (160, 230, 40), (0, 210, 160)]
+                gc = cls_colors[obj.get('class_id', 0) % len(cls_colors)]
+                pygame.draw.circle(surf, gc, (gx, gy), 12)
                 pygame.draw.circle(surf, (200, 255, 200), (gx, gy), 12, 2)
-                lbl = font.render(f"GT{obj['obj_id']}", True, (200, 255, 200))
+                vx_gt = obj.get('vx', 0.0);  vy_gt = obj.get('vy', 0.0)
+                if abs(vx_gt) > 0.01 or abs(vy_gt) > 0.01:
+                    vex = int(gx + vx_gt * 0.6 * self.scale)
+                    vey = int(gy - vy_gt * 0.6 * self.scale)
+                    pygame.draw.line(surf, (200, 255, 200), (gx, gy), (vex, vey), 2)
+                lbl = font.render(f"GT{obj['obj_id']}c{obj.get('class_id',0)}", True, (200, 255, 200))
                 surf.blit(lbl, (gx+14, gy-8))
 
         # ── Raw projected detections (noisy) ─────────────────────────────────
