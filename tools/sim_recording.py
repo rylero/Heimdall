@@ -124,14 +124,54 @@ def load_cameras(cam_dir):
     return cameras
 
 
+# ── Fudge factor (mirrors pose_estimator.cpp) ────────────────────────────────
+# pose_estimator applies: corrected_pos = raw_pos * (corrected_d / raw_d)
+# where corrected_d = max(0, kA*raw_d^2 + kB*raw_d + kC).
+# To pre-compensate in the sim, we project from inv_fudge(gt_pos) so that the
+# C++ pipeline's forward fudge lands exactly on ground truth.
+_kA, _kB, _kC = -0.0658, 0.9637, 0.12
+
+def apply_fudge(fx, fy):
+    """Forward fudge: same transform as pose_estimator.cpp."""
+    raw_d = math.hypot(fx, fy)
+    if raw_d < 0.01:
+        return fx, fy
+    corr_d = max(0.0, (_kA * raw_d + _kB) * raw_d + _kC)
+    s = corr_d / raw_d
+    return fx * s, fy * s
+
+def inv_fudge(gx, gy):
+    """Inverse fudge: find raw position such that apply_fudge(raw) = (gx, gy)."""
+    d_gt = math.hypot(gx, gy)
+    if d_gt < 0.01:
+        return gx, gy
+    # Solve kA*r^2 + kB*r + (kC - d_gt) = 0  for r = raw_d
+    disc = _kB * _kB - 4 * _kA * (_kC - d_gt)
+    if disc < 0:
+        return gx, gy
+    sq = math.sqrt(disc)
+    # Two roots; pick the positive one closer to d_gt
+    r1 = (-_kB + sq) / (2 * _kA)
+    r2 = (-_kB - sq) / (2 * _kA)
+    raw_d = r2 if r2 > 0 and (r1 <= 0 or abs(r2 - d_gt) < abs(r1 - d_gt)) else r1
+    if raw_d <= 0:
+        return gx, gy
+    s = raw_d / d_gt
+    return gx * s, gy * s
+
+
 # ── Projection: field point -> pixel bbox ─────────────────────────────────────
 
 def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radius=0.12):
     """
     Projects a field-space circle through the camera model -> pixel bbox.
-    Mirrors pose_estimator.cpp project_pixel() in reverse.
+    Pre-applies inv_fudge so that the C++ pipeline's forward fudge cancels out,
+    leaving track output exactly at (obj_x, obj_y).
     Returns (left, top, width, height) or None if not visible.
     """
+    # Pre-compensate for pose_estimator.cpp fudge factor
+    obj_x, obj_y = inv_fudge(obj_x, obj_y)
+
     # Field -> robot frame  (R(-heading) * delta)
     cos_h = math.cos(robot_heading);  sin_h = math.sin(robot_heading)
     dx = obj_x - robot_x;  dy = obj_y - robot_y
@@ -153,11 +193,14 @@ def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radiu
     u = fx * (d_cam[0] / d_cam[2]) + cx
     v = fy * (d_cam[1] / d_cam[2]) + cy
 
-    # Pixel radius from angular subtense of object radius
+    # Pixel radius from angular subtense of object radius.
+    # pose_estimator.cpp reads ground contact as (left+w/2, top+h) — the BOTTOM-CENTER.
+    # So u,v (the ground projection) must land at top+h, meaning top = v - h.
     px_r = abs(fx) * obj_radius / d_cam[2]
 
-    left = u - px_r;  top = v - px_r
     w    = 2.0 * px_r;  h = 2.0 * px_r
+    left = u - px_r
+    top  = v - h  # bottom-center = (u, v) = ground contact projection
 
     if left + w < 0 or left > cam['width'] or top + h < 0 or top > cam['height']:
         return None

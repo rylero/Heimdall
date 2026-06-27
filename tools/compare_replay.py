@@ -91,14 +91,26 @@ def load_cameras(cam_dir):
     return cams
 
 
+# ── Fudge factor (mirrors pose_estimator.cpp) ────────────────────────────────
+_kA, _kB, _kC = -0.0658, 0.9637, 0.12
+
+def apply_fudge(fx, fy):
+    """Same correction as pose_estimator.cpp — applied after geometric projection."""
+    raw_d = math.hypot(fx, fy)
+    if raw_d < 0.01:
+        return fx, fy
+    corr_d = max(0.0, (_kA * raw_d + _kB) * raw_d + _kC)
+    s = corr_d / raw_d
+    return fx * s, fy * s
+
+
 # ── Projection: pixel -> field (mirrors pose_estimator.cpp) ──────────────────
 
 def pixel_to_field(cam, px, py, robot_x, robot_y, robot_heading):
-    """Unproject pixel to field ground plane. Returns (fx, fy) or None."""
+    """Unproject pixel to field ground plane, including fudge factor. Returns (fx, fy) or None."""
     u = (px - cam['cx']) / cam['fx']
     v = (py - cam['cy']) / cam['fy']
 
-    # Direction in robot frame: R_cam_to_rob * [u, v, 1]
     R_cam_rob = mat3T(cam['R_rob_to_cam'])
     d_rob = mv(R_cam_rob, (u, v, 1.0))
 
@@ -108,13 +120,15 @@ def pixel_to_field(cam, px, py, robot_x, robot_y, robot_heading):
     dfz = d_rob[2]
 
     if dfz >= 0:
-        return None  # ray points up, misses ground
+        return None
 
     ofx = robot_x + cos_h * cam['tx'] - sin_h * cam['ty']
     ofy = robot_y + sin_h * cam['tx'] + cos_h * cam['ty']
 
     t = -cam['tz'] / dfz
-    return ofx + t * dfx, ofy + t * dfy
+    fx = ofx + t * dfx
+    fy = ofy + t * dfy
+    return apply_fudge(fx, fy)
 
 
 # ── Simple Kalman tracker ─────────────────────────────────────────────────────
@@ -242,11 +256,16 @@ def run_replay(recording_path, cameras):
 
     for frame in frames:
         dets  = frame['dets']
-        if not dets:
-            replay_frames.append({'ts_ns': 0, 'robot': (0,0,0), 'raw': [], 'tracks': []})
-            continue
+        # Use cap_ns from first detection; fall back to last known ts so timing stays monotonic
+        if dets:
+            ts_ns = dets[0]['cap_ns']
+        else:
+            ts_ns = replay_frames[-1]['ts_ns'] if replay_frames else 0
 
-        ts_ns = dets[0]['cap_ns']
+        if not dets:
+            pose = closest_pose(ts_ns) if ts_ns else (0.0, 0.0, 0.0)
+            replay_frames.append({'ts_ns': ts_ns, 'robot': pose, 'raw': [], 'tracks': []})
+            continue
         pose  = closest_pose(ts_ns)
         rx, ry, rh = pose
 
@@ -301,16 +320,19 @@ class Viz:
             return
         if len(self.replay) < 2:
             return
-        # Advance at real-time speed
         now = time.monotonic()
-        dt = now - self.t_last
-        self.t_last = now
-        # Find time span of next frame
-        cur = self.replay[min(self.idx, len(self.replay)-1)]
-        nxt = self.replay[min(self.idx+1, len(self.replay)-1)]
-        frame_dt_s = (nxt['ts_ns'] - cur['ts_ns']) / 1e9
-        if frame_dt_s <= 0 or dt >= frame_dt_s:
-            self.idx = min(self.idx + 1, self.n - 1)
+        elapsed = now - self.t_last
+
+        ri  = min(self.idx,     len(self.replay) - 1)
+        ri1 = min(self.idx + 1, len(self.replay) - 1)
+        dt_ns = self.replay[ri1]['ts_ns'] - self.replay[ri]['ts_ns']
+        # Fall back to 33ms if timestamps are identical or zero (e.g. empty frames)
+        frame_dt_s = dt_ns / 1e9 if dt_ns > 0 else 1.0 / 30.0
+
+        if elapsed >= frame_dt_s:
+            self.idx   = min(self.idx + 1, self.n - 1)
+            # Advance anchor by one frame period — keeps phase stable, avoids drift
+            self.t_last += frame_dt_s
 
     def draw(self, surf, font, big_font):
         surf.fill((40, 60, 40))
