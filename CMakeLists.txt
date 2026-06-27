@@ -217,16 +217,14 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
     add_executable(heimdall
         src/main.cpp
         src/app/heimdall_app.cpp
-        src/config/camera_config_loader.cpp
         src/config/app_config_loader.cpp
     )
     target_include_directories(heimdall PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
     target_link_libraries(heimdall
+        heimdall_core
         heimdall_pipeline
-        heimdall_comm
-        nlohmann_json::nlohmann_json
     )
     if(HEIMDALL_APRILTAG_AVAILABLE)
         target_link_libraries(heimdall heimdall_apriltag)
@@ -238,6 +236,33 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
 else()
     message(STATUS "GStreamer/DeepStream not found — skipping pipeline, main executable, and bbox_parser (tracker tests still build).")
 endif()
+
+# ---------------------------------------------------------------------------
+# Core library — hardware-free post-detection pipeline, replay I/O
+# Builds unconditionally; no GStreamer/DeepStream/CUDA dependency.
+# ---------------------------------------------------------------------------
+add_library(heimdall_core
+    src/app/detection_processor.cpp
+    src/app/output_jsonl.cpp
+    src/app/recording.cpp
+    src/config/camera_config_loader.cpp
+)
+target_include_directories(heimdall_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(heimdall_core
+    PUBLIC  heimdall_comm heimdall_pose heimdall_tracker nlohmann_json::nlohmann_json
+)
+
+# ---------------------------------------------------------------------------
+# Replay executable — runs recordings through the full back-end pipeline
+# Builds unconditionally; links heimdall_core only (no GPU/GStreamer).
+# ---------------------------------------------------------------------------
+add_executable(heimdall_replay src/app/replay_main.cpp)
+target_include_directories(heimdall_replay PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(heimdall_replay PRIVATE heimdall_core)
 
 # ---------------------------------------------------------------------------
 # Tests

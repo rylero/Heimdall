@@ -1,15 +1,14 @@
 #pragma once
-#include "app/pose_buffer.h"
+#include "app/detection_processor.h"
+#include "app/recording.h"
 #include "apriltag/apriltag_detector.h"
 #include "apriltag/tag_layout.h"
 #include "comm/comm_layer.h"
 #include "pipeline/camera_source.h"
 #include "pipeline/pipeline.h"
-#include "pose/pose_estimator.h"
-#include "tracker/tracker.h"
 #include <atomic>
 #include <condition_variable>
-#include <fstream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -20,9 +19,6 @@
 class HeimdallApp {
 public:
     struct Config {
-        // pipeline_cameras: device path + resolution for DeepStreamPipeline (CameraConfig)
-        // pose_cameras:     intrinsics + extrinsics for PoseEstimator (CameraParams)
-        // Both vectors must be the same length and in the same camera order.
         std::vector<CameraConfig>         pipeline_cameras;
         std::vector<CameraParams>         pose_cameras;
         std::string                       infer_config_path = "config/infer_yolo26n.txt";
@@ -32,25 +28,23 @@ public:
         bool                              log_tracking   = false;
         std::string                       log_path       = "logs/tracker_log.csv";
         std::optional<std::string>        apriltag_layout_path; // nullopt = disabled
+        std::optional<std::string>        record_path;           // nullopt = recording disabled
     };
 
     explicit HeimdallApp(Config config);
     ~HeimdallApp();
 
-    void run();    // blocks until stop()
+    void run();
     void stop();
 
 private:
     Config             config_;
-    PoseEstimator      pose_estimator_;
-    ObjectTracker      tracker_;
     CommLayer          comm_;
     DeepStreamPipeline pipeline_;
+    DetectionProcessor processor_;
 
-    PoseBuffer         pose_buffer_;
-    std::ofstream      log_file_;
-    std::ofstream      debug_log_file_;
-    uint64_t           last_timestamp_ns_ = 0;
+    std::unique_ptr<RecordingWriter> recorder_;
+
     std::atomic<bool>  running_{false};
     std::atomic<bool>  stopped_{false};
     std::thread        pose_recv_thread_;
@@ -64,7 +58,6 @@ private:
     std::unique_ptr<AprilTagDetector> at_detector_;
     std::thread                       at_thread_;
 
-    void on_detections(const std::vector<Detection>& dets);
     void enqueue_detections(const std::vector<Detection>& dets);
     void det_worker_loop();
     void pose_recv_loop();

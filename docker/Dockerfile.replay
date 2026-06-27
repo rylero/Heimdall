@@ -1,0 +1,23 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+
+RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS="-O2" \
+    && cmake --build build --target heimdall_replay -j$(nproc)
+
+RUN install -m 755 build/heimdall_replay /usr/local/bin/heimdall_replay
+
+WORKDIR /app
+ENTRYPOINT ["heimdall_replay"]

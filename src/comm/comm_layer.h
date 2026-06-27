@@ -1,4 +1,5 @@
 #pragma once
+#include "app/detection_output.h"
 #include "pose/camera_params.h"
 #include "tracker/track_event.h"
 #include <optional>
@@ -6,7 +7,7 @@
 #include <vector>
 #include <zmq.hpp>
 
-class CommLayer {
+class CommLayer : public DetectionOutput {
 public:
     struct Config {
         std::string pose_bind_addr        = "tcp://*:5555";  // Jetson PULL — receives robot pose
@@ -26,7 +27,7 @@ public:
 
     void send_tracking_frame(const std::vector<TrackEvent>& events,
                              uint64_t timestamp_ns,
-                             bool healthy = true);
+                             bool healthy = true) override;
 
     // Publish an AprilTag-derived robot pose estimate to port 5558.
     // Robot subscribes and calls addVisionMeasurement().
