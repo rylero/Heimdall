@@ -8,7 +8,7 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     if (!f.is_open())
         throw std::runtime_error("apriltag layout not found: " + path);
 
-    nlohmann::json j = nlohmann::json::parse(f);
+    nlohmann::json j = nlohmann::json::parse(f, nullptr, /*exceptions=*/true, /*ignore_comments=*/true);
 
     AprilTagLayout layout;
     layout.tag_size_meters = j.value("tag_size_meters", 0.1651);
