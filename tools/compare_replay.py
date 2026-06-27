@@ -340,8 +340,12 @@ class Viz:
         ri  = min(self.idx,     len(self.replay) - 1)
         ri1 = min(self.idx + 1, len(self.replay) - 1)
         dt_ns = self.replay[ri1]['ts_ns'] - self.replay[ri]['ts_ns']
-        # Fall back to 33ms if timestamps are identical or zero (e.g. empty frames)
-        frame_dt_s = dt_ns / 1e9 if dt_ns > 0 else 1.0 / 30.0
+        # Clamp to [16ms, 200ms]: guards against ts_ns=0 on empty frames
+        # producing a multi-billion-ns gap that stalls playback forever.
+        if 0 < dt_ns < 200_000_000:
+            frame_dt_s = dt_ns / 1e9
+        else:
+            frame_dt_s = 1.0 / 30.0
 
         if elapsed >= frame_dt_s:
             self.idx   = min(self.idx + 1, self.n - 1)
