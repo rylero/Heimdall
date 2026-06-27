@@ -57,9 +57,6 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     // capture time, compensating for DeepStream pipeline latency (typically 20–60 ms).
     const RobotPose pose = pose_buffer_.closest(capture_ns);
 
-    // Publish raw pixel detections for web UI debug feed (before pose estimation)
-    comm_.publish_raw(dets, timestamp_ns);
-
     const auto field_dets = pose_estimator_.project(dets, pose);
     const double ts_s = static_cast<double>(timestamp_ns) * 1e-9;
 

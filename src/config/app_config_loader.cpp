@@ -50,12 +50,10 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         const auto& c = j.at("comm");
         cfg.comm.pose_bind_addr        = c.value("pose_bind_addr",        "tcp://*:5555");
         cfg.comm.output_bind_addr      = c.value("output_bind_addr",      "tcp://*:5556");
-        cfg.comm.raw_output_bind_addr  = c.value("raw_output_bind_addr",  "tcp://*:5557");
         cfg.comm.vision_pose_bind_addr = c.value("vision_pose_bind_addr", "tcp://*:5558");
     } else {
         cfg.comm.pose_bind_addr        = "tcp://*:5555";
         cfg.comm.output_bind_addr      = "tcp://*:5556";
-        cfg.comm.raw_output_bind_addr  = "tcp://*:5557";
         cfg.comm.vision_pose_bind_addr = "tcp://*:5558";
     }
 

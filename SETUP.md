@@ -97,7 +97,6 @@ Key parameters in `heimdall.jsonc`:
   "comm": {
     "pose_bind_addr":        "tcp://*:5555",
     "output_bind_addr":      "tcp://*:5556",
-    "raw_output_bind_addr":  "tcp://*:5557",
     "vision_pose_bind_addr": "tcp://*:5558"
   },
   "bypass_tracker": false,
@@ -401,7 +400,7 @@ if (vp != null) {
 }
 ```
 
-The pose should arrive at ~10 Hz and be within ~20 cm of your actual position.
+The pose should arrive continuously and be within ~20 cm of your actual position.
 
 ### Tracker log
 

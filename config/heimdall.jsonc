@@ -31,10 +31,9 @@
 
   // ZeroMQ bind addresses (all on the Jetson side).
   "comm": {
-    "pose_bind_addr":        "tcp://*:5555",  // PULL  — robot pose in  (~50 Hz)
-    "output_bind_addr":      "tcp://*:5556",  // PUSH  — track events out (~30 Hz)
-    "raw_output_bind_addr":  "tcp://*:5557",  // PUB   — raw pixel detections (debug)
-    "vision_pose_bind_addr": "tcp://*:5558"   // PUB   — AprilTag pose estimate (~10 Hz)
+    "pose_bind_addr":        "tcp://*:5555",  // PULL — robot pose in
+    "output_bind_addr":      "tcp://*:5556",  // PUB  — track events out
+    "vision_pose_bind_addr": "tcp://*:5558"   // PUB  — AprilTag pose estimate
   },
 
   // Set true to skip the tracker and forward raw detections directly.
@@ -46,5 +45,5 @@
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  "apriltag_layout": "config/apriltag_layout.json"
+  "apriltag_layout": "config/apriltag_layout.jsonc"
 }

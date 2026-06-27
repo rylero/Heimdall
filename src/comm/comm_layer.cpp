@@ -5,18 +5,12 @@
 CommLayer::CommLayer(Config config)
     : ctx_(1),
       pull_sock_(ctx_, zmq::socket_type::pull),
-      push_sock_(ctx_, zmq::socket_type::push),
-      raw_pub_sock_(ctx_, zmq::socket_type::pub),
+      pub_sock_(ctx_, zmq::socket_type::pub),
       vision_pub_sock_(ctx_, zmq::socket_type::pub)
 {
     pull_sock_.set(zmq::sockopt::rcvtimeo, 0);
     pull_sock_.bind(config.pose_bind_addr);
-    push_sock_.bind(config.output_bind_addr);
-
-    if (!config.raw_output_bind_addr.empty()) {
-        raw_pub_sock_.bind(config.raw_output_bind_addr);
-        raw_enabled_ = true;
-    }
+    pub_sock_.bind(config.output_bind_addr);
 
     if (!config.vision_pose_bind_addr.empty()) {
         vision_pub_sock_.bind(config.vision_pose_bind_addr);
@@ -73,9 +67,9 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
 
     std::string bytes = frame.SerializeAsString();
     try {
-        push_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
+        pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
     } catch (const zmq::error_t&) {
-        // No receiver connected — drop frame rather than stall the pipeline thread.
+        // No subscriber connected — drop frame rather than stall the pipeline thread.
     }
 }
 
@@ -94,25 +88,4 @@ void CommLayer::send_vision_pose(float x, float y, float heading_rad, uint64_t t
     } catch (const zmq::error_t&) {}
 }
 
-void CommLayer::publish_raw(const std::vector<Detection>& detections,
-                             uint64_t timestamp_ns) {
-    if (!raw_enabled_) return;
-
-    heimdall::RawDetectionFrameMsg frame;
-    frame.set_timestamp_ns(timestamp_ns);
-
-    for (const auto& d : detections) {
-        auto* raw = frame.add_detections();
-        raw->set_camera_id(d.camera_id);
-        raw->set_class_id(d.class_id);
-        raw->set_confidence(d.confidence);
-        raw->set_left(d.left);
-        raw->set_top(d.top);
-        raw->set_width(d.width);
-        raw->set_height(d.height);
-    }
-
-    std::string bytes = frame.SerializeAsString();
-    raw_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
-}
 
