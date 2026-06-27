@@ -20,11 +20,11 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
 
     std::vector<fs::path> paths;
     for (const auto& entry : fs::directory_iterator(dir)) {
-        if (entry.path().extension() == ".json")
+        if (entry.path().extension() == ".jsonc")
             paths.push_back(entry.path());
     }
     if (paths.empty())
-        throw std::runtime_error("no camera .json files found in: " + dir);
+        throw std::runtime_error("no camera .jsonc files found in: " + dir);
 
     std::sort(paths.begin(), paths.end());
 
