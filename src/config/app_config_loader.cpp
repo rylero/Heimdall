@@ -53,7 +53,7 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         const auto& c = j.at("comm");
         if (c.contains("pose_bind_addr"))        cfg.comm.pose_bind_addr        = c.at("pose_bind_addr").get<std::string>();
         if (c.contains("output_bind_addr"))      cfg.comm.output_bind_addr      = c.at("output_bind_addr").get<std::string>();
-        if (c.contains("vision_pose_bind_addr")) cfg.comm.vision_pose_bind_addr = c.at("vision_pose_bind_addr").get<std::string>();
+        if (c.contains("apriltag_pose_bind_addr")) cfg.comm.apriltag_pose_bind_addr = c.at("apriltag_pose_bind_addr").get<std::string>();
     }
 
     return cfg;

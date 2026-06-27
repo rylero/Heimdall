@@ -72,8 +72,8 @@ std::vector<FieldDetection> PoseEstimator::project(
         if (!project_pixel(det.camera_id, px, py, robot_pose, fx, fy))
             continue;
 
-        // Quadratic distance correction fitted from 5 measurements (1–3.4 m).
-        // actual = kA*d^2 + kB*d + kC  — update constants if mounting changes.
+        // Fuge factor time! This is basically a couple points plotted in desmos with their real distances
+        // These points are then fit with a quadratic curve and it is used to account for problems with mounting and calibration
         const float raw_d = std::sqrt(fx*fx + fy*fy);
         if (raw_d > 0.01f) {
             constexpr float kA = -0.0658f;

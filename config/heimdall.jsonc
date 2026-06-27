@@ -44,7 +44,7 @@
   "comm": {
     "pose_bind_addr":        "tcp://*:5555",  // PULL — robot pose in
     "output_bind_addr":      "tcp://*:5556",  // PUB  — track events out
-    "vision_pose_bind_addr": "tcp://*:5558"   // PUB  — AprilTag pose estimate
+    "apriltag_pose_bind_addr": "tcp://*:5558"  // PUB  — AprilTag pose estimate
   },
 
   // Set true to skip the tracker and forward raw detections directly.
