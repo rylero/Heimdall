@@ -1,5 +1,4 @@
 #pragma once
-#include "pipeline/detection.h"
 #include "pose/camera_params.h"
 #include "tracker/track_event.h"
 #include <optional>
@@ -10,10 +9,9 @@
 class CommLayer {
 public:
     struct Config {
-        std::string pose_bind_addr;         // Jetson PULL — receives robot pose
-        std::string output_bind_addr;       // Jetson PUSH — sends track events
-        std::string raw_output_bind_addr;   // Jetson PUB  — raw pixel detections (empty = disabled)
-        std::string vision_pose_bind_addr;  // Jetson PUB  — AprilTag vision pose  (empty = disabled)
+        std::string pose_bind_addr        = "tcp://*:5555";  // Jetson PULL — receives robot pose
+        std::string output_bind_addr      = "tcp://*:5556";  // Jetson PUB  — sends track events
+        std::string apriltag_pose_bind_addr = "tcp://*:5558";  // Jetson PUB  — AprilTag vision pose
     };
 
     // Received robot pose tagged with Jetson CLOCK_MONOTONIC reception time.
@@ -26,28 +24,21 @@ public:
 
     std::optional<TimestampedPose> try_recv_pose();
 
-    void send_frame(const std::vector<TrackEvent>& events,
-                    uint64_t timestamp_ns,
-                    bool healthy = true);
-
-    // Publish raw pixel-space detections for the web UI debug feed.
-    // No-op if raw_output_bind_addr was empty at construction.
-    void publish_raw(const std::vector<Detection>& detections,
-                     uint64_t timestamp_ns);
+    void send_tracking_frame(const std::vector<TrackEvent>& events,
+                             uint64_t timestamp_ns,
+                             bool healthy = true);
 
     // Publish an AprilTag-derived robot pose estimate to port 5558.
     // Robot subscribes and calls addVisionMeasurement().
-    // No-op if vision_pose_bind_addr was empty at construction.
-    void send_vision_pose(float x, float y, float heading_rad, uint64_t timestamp_ns);
+    // No-op if apriltag_pose_bind_addr was empty at construction.
+    void send_apriltag_pose(float x, float y, float heading_rad, uint64_t timestamp_ns);
 
     zmq::context_t& context() { return ctx_; }
 
 private:
     zmq::context_t ctx_;
-    zmq::socket_t  pull_sock_;
-    zmq::socket_t  push_sock_;
-    zmq::socket_t  raw_pub_sock_;
-    zmq::socket_t  vision_pub_sock_;
-    bool           raw_enabled_    = false;
-    bool           vision_enabled_ = false;
+    zmq::socket_t  pose_pull_sock_;
+    zmq::socket_t  output_pub_sock_;
+    zmq::socket_t  apriltag_pose_pub_sock_;
+    bool           apriltag_pose_enabled_ = false;
 };

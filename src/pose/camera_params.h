@@ -29,7 +29,7 @@ struct RobotPose {
 
 // Build a camera->robot rotation matrix from mounting angles.
 //
-// Convention (camera frame = OpenCV: X right, Y down, Z forward):
+// Convention (camera frame = OpenCV: X right, Y down, Z forward): -- note that this is different from WPILIB convention
 //   yaw   -- which direction the camera faces on the robot, radians CCW from robot +X.
 //            yaw=0 -> forward, yaw=pi/2 -> left side, yaw=-pi/2 -> right side.
 //   pitch -- downward tilt of optical axis, radians. pitch=0 -> level, pitch>0 -> looking down.

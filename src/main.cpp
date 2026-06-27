@@ -10,7 +10,7 @@ static void shutdown(int) {
 }
 
 int main() {
-    HeimdallApp app(load_app_config("config/heimdall.json"));
+    HeimdallApp app(load_app_config("config/heimdall.jsonc"));
     g_app = &app;
     std::signal(SIGINT, shutdown);
     std::printf("Heimdall starting. Ctrl+C to stop.\n");

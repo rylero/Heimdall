@@ -45,7 +45,7 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     // dt (and exploding covariance) on the next real-detection frame. Send a heartbeat
     // with the last known-good timestamp instead and skip tracker processing entirely.
     if (dets.empty()) {
-        comm_.send_frame({}, last_timestamp_ns_, /*healthy=*/true);
+        comm_.send_tracking_frame({}, last_timestamp_ns_, /*healthy=*/true);
         return;
     }
 
@@ -57,9 +57,6 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
     // capture time, compensating for DeepStream pipeline latency (typically 20–60 ms).
     const RobotPose pose = pose_buffer_.closest(capture_ns);
 
-    // Publish raw pixel detections for web UI debug feed (before pose estimation)
-    comm_.publish_raw(dets, timestamp_ns);
-
     const auto field_dets = pose_estimator_.project(dets, pose);
     const double ts_s = static_cast<double>(timestamp_ns) * 1e-9;
 
@@ -68,6 +65,7 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
             log_file_ << ts_s << ",raw,-1," << fd.x << ',' << fd.y << ',' << fd.confidence << '\n';
     }
 
+    // JPDAF tracker bypassed, just sends raw detections instead
     if (config_.bypass_tracker) {
         std::vector<TrackEvent> events;
         events.reserve(field_dets.size());
@@ -77,10 +75,11 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
                 TrackedObject{.track_id=static_cast<uint32_t>(i), .class_id=fd.class_id,
                               .x=fd.x, .y=fd.y, .confidence=fd.confidence}});
         }
-        comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
+        comm_.send_tracking_frame(events, timestamp_ns, /*healthy=*/true);
         return;
     }
 
+    // update using the JPDAF tracker pipeline
     const auto events = tracker_.update(field_dets, ts_s);
 
     if (config_.log_tracking && log_file_.is_open()) {
@@ -103,7 +102,7 @@ void HeimdallApp::on_detections(const std::vector<Detection>& dets) {
         }
     }
 
-    comm_.send_frame(events, timestamp_ns, /*healthy=*/true);
+    comm_.send_tracking_frame(events, timestamp_ns, /*healthy=*/true);
 }
 
 void HeimdallApp::enqueue_detections(const std::vector<Detection>& dets) {
@@ -146,13 +145,12 @@ void HeimdallApp::apriltag_loop() {
     while (running_) {
         auto result = at_detector_->detect();
         if (result) {
-            comm_.send_vision_pose(
+            comm_.send_apriltag_pose(
                 static_cast<float>(result->x),
                 static_cast<float>(result->y),
                 static_cast<float>(result->heading_rad),
                 result->timestamp_ns);
         }
-        // Camera FPS (~10 Hz) paces this loop — no explicit sleep needed.
     }
 }
 

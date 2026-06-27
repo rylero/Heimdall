@@ -30,10 +30,14 @@ std::vector<TrackEvent> ObjectTracker::update(
         .gate_distance   = config_.gate_distance,
         .clutter_density = config_.clutter_density,
         .p_detection     = config_.p_detection,
+        .meas_noise_r    = config_.meas_noise_r,
+        .process_noise_q = config_.process_noise_q,
+        .pos_cov_floor   = config_.pos_cov_floor,
     };
 
     auto unassociated = jpda_update(tracks_, detections, timestamp_s, jpda_cfg);
 
+    // any tracks not associated by jpda are potential new tracks, so we will create them
     for (int idx : unassociated) {
         const auto& d = detections[idx];
         tracks_.push_back(make_track(next_id_++, d.class_id, d.x, d.y, d.confidence,
@@ -43,9 +47,10 @@ std::vector<TrackEvent> ObjectTracker::update(
     std::vector<TrackEvent> events;
     std::vector<Track> surviving;
 
+    // go through an update tracks be either confirming, discarding, or updating them
     for (auto& t : tracks_) {
         if (t.status == TrackStatus::TENTATIVE) {
-            if (t.frames_missed > 0) {
+            if (t.frames_missed > 0) { // if we miss frames on a new track, it is likely noise
                 continue;
             }
             if (t.frames_seen >= config_.confirmation_frames) {
@@ -76,8 +81,8 @@ std::vector<TrackDebugInfo> ObjectTracker::debug_info() const {
         out.push_back(TrackDebugInfo{
             t.id,
             t.dbg_p_xx, t.dbg_p_yy,
-            t.dbg_p_xx / (t.dbg_p_xx + MEAS_NOISE_R),
-            t.dbg_p_yy / (t.dbg_p_yy + MEAS_NOISE_R),
+            t.dbg_p_xx / (t.dbg_p_xx + config_.meas_noise_r),
+            t.dbg_p_yy / (t.dbg_p_yy + config_.meas_noise_r),
             t.dbg_beta,
             t.dbg_maha,
         });

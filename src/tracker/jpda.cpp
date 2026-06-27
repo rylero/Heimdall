@@ -15,9 +15,10 @@ std::vector<int> jpda_update(
     const int m = static_cast<int>(detections.size());
 
     // 1. Predict all tracks forward
+    const KalmanParams kp{ cfg.meas_noise_r, cfg.process_noise_q, cfg.pos_cov_floor };
     for (auto& t : tracks) {
         double dt = timestamp_s - t.last_update_s;
-        if (dt > 0.0) kalman_predict(t, dt);
+        if (dt > 0.0) kalman_predict(t, dt, kp);
     }
 
     // Early-out: no tracks or no detections
@@ -33,14 +34,14 @@ std::vector<int> jpda_update(
         return all;
     }
 
-    // 2. Compute Gaussian likelihoods within Euclidean gate
+    // 2. Compute Gaussian likelihoods within distance gate
     std::vector<std::vector<float>> L(n, std::vector<float>(m, 0.f));
     for (int i = 0; i < n; ++i) {
         const auto& P   = tracks[i].cov;
         const int   N   = (tracks[i].model == FilterModel::CONSTANT_POSITION)     ? 2 :
                           (tracks[i].model == FilterModel::CONSTANT_ACCELERATION)  ? 6 : 4;
-        const float s00 = P[0*N+0] + MEAS_NOISE_R;
-        const float s11 = P[1*N+1] + MEAS_NOISE_R;
+        const float s00 = P[0*N+0] + cfg.meas_noise_r;
+        const float s11 = P[1*N+1] + cfg.meas_noise_r;
         const float norm = 1.f / (TWO_PI * std::sqrt(s00 * s11));
 
         tracks[i].dbg_p_xx = P[0*N+0];
@@ -86,7 +87,7 @@ std::vector<int> jpda_update(
 
         tracks[i].dbg_beta = total_beta;
 
-        kalman_update_combined(tracks[i], innov_x, innov_y, total_beta);
+        kalman_update_combined(tracks[i], innov_x, innov_y, total_beta, kp);
         tracks[i].last_update_s = timestamp_s;
 
         if (total_beta > 0.f) {

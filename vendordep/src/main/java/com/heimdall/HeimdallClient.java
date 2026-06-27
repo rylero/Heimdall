@@ -14,8 +14,9 @@ import org.zeromq.ZMQException;
  *
  * <p>Ports (must match heimdall's CommLayer::Config):
  * <ul>
- *   <li>5555 — robot PUSH → Jetson PULL (robot pose at ~50 Hz)
- *   <li>5556 — Jetson PUSH → robot PULL (detection frames, ~30 Hz)
+ *   <li>5555 — robot PUSH → Jetson PULL (robot pose)
+ *   <li>5556 — Jetson PUB → robot SUB (detection frames; latest-value, drops stale)
+ *   <li>5558 — Jetson PUB → robot SUB (AprilTag vision pose)
  * </ul>
  *
  * <p>All socket I/O runs on a daemon background thread — safe to call
@@ -81,7 +82,7 @@ public final class HeimdallClient implements AutoCloseable {
 
     /**
      * Queue a robot pose to be sent to the Jetson.
-     * Call this from your odometry update (matches RoboRIO ~50 Hz control loop).
+     * Call this from your odometry update.
      *
      * @param x          field-relative x, meters
      * @param y          field-relative y, meters
@@ -163,16 +164,19 @@ public final class HeimdallClient implements AutoCloseable {
     // -------------------------------------------------------------------------
 
     private void ioLoop() {
-        ZMQ.Socket push       = zmqCtx.createSocket(SocketType.PUSH);
-        ZMQ.Socket pull       = zmqCtx.createSocket(SocketType.PULL);
-        ZMQ.Socket visionSub  = zmqCtx.createSocket(SocketType.SUB);
+        ZMQ.Socket push        = zmqCtx.createSocket(SocketType.PUSH);
+        ZMQ.Socket trackSub    = zmqCtx.createSocket(SocketType.SUB);
+        ZMQ.Socket visionSub   = zmqCtx.createSocket(SocketType.SUB);
         try {
             push.connect("tcp://" + jetsonHost + ":" + posePort);
-            pull.setReceiveTimeOut(5); // 5 ms receive timeout → ~200 Hz poll rate
-            pull.connect("tcp://" + jetsonHost + ":" + detectionPort);
+
+            trackSub.setReceiveTimeOut(5); // 5 ms poll timeout
+            trackSub.connect("tcp://" + jetsonHost + ":" + detectionPort);
+            trackSub.subscribe(new byte[0]); // subscribe to all messages
+
             visionSub.setReceiveTimeOut(0); // non-blocking
             visionSub.connect("tcp://" + jetsonHost + ":" + visionPosePort);
-            visionSub.subscribe(new byte[0]); // subscribe to all messages
+            visionSub.subscribe(new byte[0]);
 
             while (running) {
                 // 1. Drain pending pose — take the most recent one, discard older.
@@ -184,8 +188,8 @@ public final class HeimdallClient implements AutoCloseable {
                     push.send(bytes, ZMQ.DONTWAIT);
                 }
 
-                // 2. Receive detection frame (blocks up to 5 ms).
-                byte[] data = pull.recv(0);
+                // 2. Receive latest detection frame (blocks up to 5 ms; PUB drops stale).
+                byte[] data = trackSub.recv(0);
                 if (data != null && data.length > 0) {
                     try {
                         DetectionFrame frame = ProtoReader.parseDetectionFrame(data);
@@ -196,7 +200,7 @@ public final class HeimdallClient implements AutoCloseable {
                     }
                 }
 
-                // 3. Poll vision pose (non-blocking, ~10 Hz from Jetson).
+                // 3. Poll vision pose (non-blocking).
                 byte[] vdata = visionSub.recv(ZMQ.DONTWAIT);
                 if (vdata != null && vdata.length > 0) {
                     try {
@@ -211,7 +215,7 @@ public final class HeimdallClient implements AutoCloseable {
             }
         } finally {
             push.close();
-            pull.close();
+            trackSub.close();
             visionSub.close();
         }
     }

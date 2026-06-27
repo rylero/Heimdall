@@ -38,21 +38,6 @@ message DetectionFrameMsg {
     bool                   healthy      = 3;
 }
 
-message RawDetectionMsg {
-    int32  camera_id  = 1;
-    int32  class_id   = 2;
-    float  confidence = 3;
-    float  left       = 4;
-    float  top        = 5;
-    float  width      = 6;
-    float  height     = 7;
-}
-
-message RawDetectionFrameMsg {
-    repeated RawDetectionMsg detections  = 1;
-    uint64                   timestamp_ns = 2;
-}
-
 // Vision-based robot pose estimate derived from AprilTag detection on the Jetson.
 // Sent from Jetson → robot on port 5558 (PUB) so the robot can call addVisionMeasurement().
 message VisionPoseMsg {

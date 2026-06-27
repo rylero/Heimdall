@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 
+// Track events used by the modified JPDAF tracker
 enum class TrackEventType {
     CONFIRMED,
     UPDATED,

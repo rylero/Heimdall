@@ -18,45 +18,42 @@ static FilterModel parse_filter_model(const std::string& s) {
 HeimdallApp::Config load_app_config(const std::string& path) {
     std::ifstream f(path);
     if (!f) throw std::runtime_error("cannot open app config: " + path);
+
+    // we use .jsonc for config files that way each setting can have an explainer, thats why comments need to be enabled
     json j = json::parse(f, nullptr, /*exceptions=*/true, /*ignore_comments=*/true);
 
-    std::string cameras_dir = j.value("cameras_dir", "config/cameras");
+    std::string cameras_dir = "config/cameras";
+    if (j.contains("cameras_dir")) cameras_dir = j.at("cameras_dir").get<std::string>();
     auto cameras = load_camera_configs(cameras_dir);
 
-    HeimdallApp::Config cfg;
-    cfg.pipeline_cameras  = std::move(cameras.pipeline_cameras);
-    cfg.pose_cameras      = std::move(cameras.pose_cameras);
-    cfg.infer_config_path = j.value("infer_config", "config/infer_yolo26n.txt");
-    cfg.bypass_tracker    = j.value("bypass_tracker", false);
-    cfg.log_tracking      = j.value("log_tracking", false);
-    cfg.log_path          = j.value("log_path", "logs/tracker_log.csv");
+    HeimdallApp::Config cfg;  // struct defaults are the single source of truth
+    cfg.pipeline_cameras = std::move(cameras.pipeline_cameras);
+    cfg.pose_cameras     = std::move(cameras.pose_cameras);
 
-    if (j.contains("apriltag_layout"))
-        cfg.apriltag_layout_path = j.at("apriltag_layout").get<std::string>();
+    if (j.contains("infer_config"))      cfg.infer_config_path = j.at("infer_config").get<std::string>();
+    if (j.contains("bypass_tracker"))    cfg.bypass_tracker    = j.at("bypass_tracker").get<bool>();
+    if (j.contains("log_tracking"))      cfg.log_tracking      = j.at("log_tracking").get<bool>();
+    if (j.contains("log_path"))          cfg.log_path          = j.at("log_path").get<std::string>();
+    if (j.contains("apriltag_layout"))   cfg.apriltag_layout_path = j.at("apriltag_layout").get<std::string>();
 
     if (j.contains("tracker")) {
         const auto& t = j.at("tracker");
-        cfg.tracker.confirmation_frames = t.value("confirmation_frames", 2);
-        cfg.tracker.loss_frames         = t.value("loss_frames",         15);
-        cfg.tracker.gate_distance       = t.value("gate_distance",       2.0f);
-        cfg.tracker.clutter_density     = t.value("clutter_density",     1.0f);
-        cfg.tracker.p_detection         = t.value("p_detection",         0.9f);
-        if (t.contains("filter_model"))
-            cfg.tracker.filter_model = parse_filter_model(
-                t.at("filter_model").get<std::string>());
+        if (t.contains("confirmation_frames")) cfg.tracker.confirmation_frames = t.at("confirmation_frames").get<int>();
+        if (t.contains("loss_frames"))         cfg.tracker.loss_frames         = t.at("loss_frames").get<int>();
+        if (t.contains("gate_distance"))       cfg.tracker.gate_distance       = t.at("gate_distance").get<float>();
+        if (t.contains("clutter_density"))     cfg.tracker.clutter_density     = t.at("clutter_density").get<float>();
+        if (t.contains("p_detection"))         cfg.tracker.p_detection         = t.at("p_detection").get<float>();
+        if (t.contains("meas_noise_r"))        cfg.tracker.meas_noise_r        = t.at("meas_noise_r").get<float>();
+        if (t.contains("process_noise_q"))     cfg.tracker.process_noise_q     = t.at("process_noise_q").get<float>();
+        if (t.contains("pos_cov_floor"))       cfg.tracker.pos_cov_floor       = t.at("pos_cov_floor").get<float>();
+        if (t.contains("filter_model"))        cfg.tracker.filter_model        = parse_filter_model(t.at("filter_model").get<std::string>());
     }
 
     if (j.contains("comm")) {
         const auto& c = j.at("comm");
-        cfg.comm.pose_bind_addr        = c.value("pose_bind_addr",        "tcp://*:5555");
-        cfg.comm.output_bind_addr      = c.value("output_bind_addr",      "tcp://*:5556");
-        cfg.comm.raw_output_bind_addr  = c.value("raw_output_bind_addr",  "tcp://*:5557");
-        cfg.comm.vision_pose_bind_addr = c.value("vision_pose_bind_addr", "tcp://*:5558");
-    } else {
-        cfg.comm.pose_bind_addr        = "tcp://*:5555";
-        cfg.comm.output_bind_addr      = "tcp://*:5556";
-        cfg.comm.raw_output_bind_addr  = "tcp://*:5557";
-        cfg.comm.vision_pose_bind_addr = "tcp://*:5558";
+        if (c.contains("pose_bind_addr"))        cfg.comm.pose_bind_addr        = c.at("pose_bind_addr").get<std::string>();
+        if (c.contains("output_bind_addr"))      cfg.comm.output_bind_addr      = c.at("output_bind_addr").get<std::string>();
+        if (c.contains("apriltag_pose_bind_addr")) cfg.comm.apriltag_pose_bind_addr = c.at("apriltag_pose_bind_addr").get<std::string>();
     }
 
     return cfg;

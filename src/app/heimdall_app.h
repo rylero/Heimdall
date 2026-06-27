@@ -25,12 +25,12 @@ public:
         // Both vectors must be the same length and in the same camera order.
         std::vector<CameraConfig>         pipeline_cameras;
         std::vector<CameraParams>         pose_cameras;
-        std::string                       infer_config_path;
+        std::string                       infer_config_path = "config/infer_yolo26n.txt";
         ObjectTracker::Config             tracker;
         CommLayer::Config                 comm;
         bool                              bypass_tracker = false;
         bool                              log_tracking   = false;
-        std::string                       log_path       = "tracker_log.csv";
+        std::string                       log_path       = "logs/tracker_log.csv";
         std::optional<std::string>        apriltag_layout_path; // nullopt = disabled
     };
 

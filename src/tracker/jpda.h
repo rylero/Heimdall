@@ -4,9 +4,12 @@
 #include <vector>
 
 struct JpdaConfig {
-    float gate_distance   = 1.0f;  // meters, coarse Euclidean pre-filter (cheap reject before maha calc)
-    float clutter_density = 1.0f;  // lambda -- expected clutter returns per gated region
-    float p_detection     = 0.9f;  // P_D -- probability of detecting a present target
+    float gate_distance   = 1.0f;   // meters, coarse Euclidean pre-filter (cheap reject before maha calc)
+    float clutter_density = 1.0f;   // lambda -- expected clutter returns per gated region
+    float p_detection     = 0.9f;   // P_D -- probability of detecting a present target
+    float meas_noise_r    = 0.16f;  // measurement noise variance (m^2); passed through to Kalman
+    float process_noise_q = 2.0f;   // process noise intensity; passed through to Kalman
+    float pos_cov_floor   = 0.1f;   // minimum position covariance diagonal; passed through to Kalman
 };
 
 // Chi-square critical value, 2 DOF, 99% confidence. Detections with Mahalanobis distance

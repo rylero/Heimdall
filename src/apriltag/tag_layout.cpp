@@ -8,11 +8,13 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     if (!f.is_open())
         throw std::runtime_error("apriltag layout not found: " + path);
 
-    nlohmann::json j = nlohmann::json::parse(f);
+    // We are using ignore_comments here since we use .jsonc files for easier configuration
+    nlohmann::json j = nlohmann::json::parse(f, nullptr, /*exceptions=*/true, /*ignore_comments=*/true);
 
     AprilTagLayout layout;
     layout.tag_size_meters = j.value("tag_size_meters", 0.1651);
 
+    // Load AprilTag Camera Parameters
     auto& cam = layout.camera;
     auto  jc  = j.at("camera");
     cam.device = jc.at("device").get<std::string>();
@@ -29,6 +31,7 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     cam.p2 = jc.value("p2", 0.0);
     cam.k3 = jc.value("k3", 0.0);
 
+    // Robot -> Camera Transform
     auto  jr = j.at("robot_to_camera");
     auto& r  = layout.robot_to_camera;
     r.x     = jr.value("x",     0.0);
@@ -38,6 +41,7 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     r.pitch = jr.value("pitch", 0.0);
     r.yaw   = jr.value("yaw",   0.0);
 
+    // AprilTag Field Map
     for (auto& jt : j.at("tags")) {
         TagPose tp;
         tp.x     = jt.at("x").get<double>();

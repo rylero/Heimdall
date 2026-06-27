@@ -40,12 +40,12 @@ HeimdallSubsystem.java               Heimdall Docker container
 Already implemented:
 
 - `src/apriltag/apriltag_detector.cpp` — V4L2 camera capture (YUYV → grayscale, no FFmpeg dep), `apriltag` C library detection, `cv::solvePnPGeneric(SOLVEPNP_IPPE_SQUARE)` for 3-D pose, ambiguity rejection
-- `src/apriltag/tag_layout.h/.cpp` — loads `config/apriltag_layout.json`
+- `src/apriltag/tag_layout.h/.cpp` — loads `config/apriltag_layout.jsonc`
 - `src/comm/comm_layer.cpp` — adds ZMQ PUB socket on `:5558`, `send_vision_pose()`
 - `src/app/heimdall_app.cpp` — background `apriltag_loop()` thread
 - `proto/heimdall.proto` — `VisionPoseMsg {x, y, heading, timestamp_ns}`
 
-Filter models available in `heimdall.json`:
+Filter models available in `heimdall.jsonc`:
 | Value | State vector | Use case |
 |-------|-------------|----------|
 | `constant_position` | [x, y] | Very slow objects |
@@ -72,15 +72,15 @@ All Heimdall parameters are in files under `config/`. No recompile needed to cha
 
 ```
 config/
-├── heimdall.json            ← master app config (tracker, ZMQ ports, logging)
+├── heimdall.jsonc            ← master app config (tracker, ZMQ ports, logging)
 ├── cameras/
-│   ├── cam0.json            ← object-detection camera 0 (intrinsics + extrinsics)
-│   └── cam1.json            ← object-detection camera 1
-├── apriltag_layout.json     ← AprilTag camera intrinsics, field tag poses
+│   ├── cam0.jsonc            ← object-detection camera 0 (intrinsics + extrinsics)
+│   └── cam1.jsonc            ← object-detection camera 1
+├── apriltag_layout.jsonc     ← AprilTag camera intrinsics, field tag poses
 └── infer_yolo26n.txt        ← DeepStream/TensorRT nvinfer config (existing)
 ```
 
-Key parameters in `heimdall.json`:
+Key parameters in `heimdall.jsonc`:
 
 ```jsonc
 {
@@ -97,13 +97,12 @@ Key parameters in `heimdall.json`:
   "comm": {
     "pose_bind_addr":        "tcp://*:5555",
     "output_bind_addr":      "tcp://*:5556",
-    "raw_output_bind_addr":  "tcp://*:5557",
     "vision_pose_bind_addr": "tcp://*:5558"
   },
   "bypass_tracker": false,
   "log_tracking": true,
   "log_path": "logs/tracker_log.csv",
-  "apriltag_layout": "config/apriltag_layout.json"
+  "apriltag_layout": "config/apriltag_layout.jsonc"
 }
 ```
 
@@ -171,9 +170,9 @@ ffplay -f v4l2 -video_size 640x480 /dev/video0
 ```
 
 Update device paths in:
-- `config/cameras/cam0.json` → `"device"`
-- `config/cameras/cam1.json` → `"device"`
-- `config/apriltag_layout.json` → `"camera"."device"`
+- `config/cameras/cam0.jsonc` → `"device"`
+- `config/cameras/cam1.jsonc` → `"device"`
+- `config/apriltag_layout.jsonc` → `"camera"."device"`
 
 ---
 
@@ -200,7 +199,7 @@ While running:
 - Press **SPACE** to capture each view — aim for **25–30 captures**
 - Press **q** to compute
 
-The script prints values to paste into `config/apriltag_layout.json`:
+The script prints values to paste into `config/apriltag_layout.jsonc`:
 
 ```jsonc
 "camera": {
@@ -233,7 +232,7 @@ python3 tools/calibrate_apriltag_camera.py --device /dev/video0 ...
 python3 tools/calibrate_apriltag_camera.py --device /dev/video2 ...
 ```
 
-Paste the `fx/fy/cx/cy/k1…` values into `config/cameras/cam0.json` and `cam1.json` under `"intrinsics"`.
+Paste the `fx/fy/cx/cy/k1…` values into `config/cameras/cam0.jsonc` and `cam1.jsonc` under `"intrinsics"`.
 
 ---
 
@@ -259,7 +258,7 @@ Use a tape measure or CAD model. For each camera:
 ### Floor-facing cameras (cam0, cam1)
 
 ```jsonc
-// cam0.json — floor-facing, left of robot
+// cam0.jsonc — floor-facing, left of robot
 "extrinsics": {
   "tx":    0.20,      // 20 cm forward of centre
   "ty":    0.15,      // 15 cm left of centre
@@ -272,7 +271,7 @@ Use a tape measure or CAD model. For each camera:
 
 If the camera is mounted rotated (e.g. 90° clockwise), set `roll` accordingly.
 
-### AprilTag camera (apriltag_layout.json)
+### AprilTag camera (apriltag_layout.jsonc)
 
 ```jsonc
 "robot_to_camera": {
@@ -307,7 +306,7 @@ print(round(yaw, 4))
 
 Wall-mounted FRC tags have `roll=0, pitch=0` (facing horizontally).
 
-Add one entry per visible tag in `config/apriltag_layout.json`. You only need tags your robot can reasonably see from the field — no need to include all 22:
+Add one entry per visible tag in `config/apriltag_layout.jsonc`. You only need tags your robot can reasonably see from the field — no need to include all 22:
 
 ```jsonc
 "tags": [
@@ -401,7 +400,7 @@ if (vp != null) {
 }
 ```
 
-The pose should arrive at ~10 Hz and be within ~20 cm of your actual position.
+The pose should arrive continuously and be within ~20 cm of your actual position.
 
 ### Tracker log
 
@@ -417,11 +416,11 @@ tail -f ~/heimdall/logs/tracker_log.csv
 |---------|-------------|-----|
 | `healthy=false`, no tracks | Wrong `/dev/videoX` for detect cams | Re-run `v4l2-ctl --list-devices`, update `config/cameras/` |
 | Tracks drift off real positions | Wrong extrinsics (tx/ty/tz/pitch) | Re-measure camera mount position |
-| Ghost tracks / track churn | `gate_distance` too large or `clutter_density` too low | Raise `clutter_density`, lower `gate_distance` in `heimdall.json` |
-| Tracks drop instantly | `loss_frames` too low | Raise to 20–30 in `heimdall.json` |
+| Ghost tracks / track churn | `gate_distance` too large or `clutter_density` too low | Raise `clutter_density`, lower `gate_distance` in `heimdall.jsonc` |
+| Tracks drop instantly | `loss_frames` too low | Raise to 20–30 in `heimdall.jsonc` |
 | No pose corrections | AprilTag cam can't see tags | Verify device path, check lighting, confirm tag IDs in JSON |
 | Pose jumps on tag detect | Bad calibration or wrong tag field position | Re-run calibration, double-check tag coordinates from WPILib JSON |
-| Pose correction in wrong direction | `robot_to_camera.yaw` wrong | Add/subtract π from yaw in `apriltag_layout.json` |
+| Pose correction in wrong direction | `robot_to_camera.yaw` wrong | Add/subtract π from yaw in `apriltag_layout.jsonc` |
 | Pose estimate far off even with correct tags | `tag_size_meters` wrong | Measure your printed tag and update |
 | Container exits immediately | Missing `--device` flags | Add `--device /dev/videoX` for every camera |
 

@@ -26,15 +26,25 @@
 
     // Kalman filter motion model.
     // Options: "constant_position", "constant_velocity", "constant_acceleration"
-    "filter_model": "constant_velocity"
+    "filter_model": "constant_velocity",
+
+    // Kalman filter tuning.
+    // meas_noise_r: measurement noise variance (m^2). Raise if tracks chase sensor noise;
+    //   lower if tracks lag behind fast-moving objects. 0.4m jitter → 0.4^2 = 0.16.
+    "meas_noise_r": 0.16,
+    // process_noise_q: process noise intensity. Higher = tracks respond faster to
+    //   acceleration; lower = smoother tracks that lag more during fast maneuvers.
+    "process_noise_q": 2.0,
+    // pos_cov_floor: minimum position covariance diagonal. Prevents Kalman gain from
+    //   collapsing on long tracks (floor=0.1 → K >= 0.1/(0.1+0.16) ≈ 38% meas weight).
+    "pos_cov_floor": 0.1
   },
 
   // ZeroMQ bind addresses (all on the Jetson side).
   "comm": {
-    "pose_bind_addr":        "tcp://*:5555",  // PULL  — robot pose in  (~50 Hz)
-    "output_bind_addr":      "tcp://*:5556",  // PUSH  — track events out (~30 Hz)
-    "raw_output_bind_addr":  "tcp://*:5557",  // PUB   — raw pixel detections (debug)
-    "vision_pose_bind_addr": "tcp://*:5558"   // PUB   — AprilTag pose estimate (~10 Hz)
+    "pose_bind_addr":        "tcp://*:5555",  // PULL — robot pose in
+    "output_bind_addr":      "tcp://*:5556",  // PUB  — track events out
+    "apriltag_pose_bind_addr": "tcp://*:5558"  // PUB  — AprilTag pose estimate
   },
 
   // Set true to skip the tracker and forward raw detections directly.
@@ -46,5 +56,5 @@
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  "apriltag_layout": "config/apriltag_layout.json"
+  "apriltag_layout": "config/apriltag_layout.jsonc"
 }

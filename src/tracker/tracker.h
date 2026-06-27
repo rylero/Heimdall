@@ -12,6 +12,9 @@ struct ObjectTrackerConfig {
     float       clutter_density     = 1.0f;
     float       p_detection         = 0.9f;
     FilterModel filter_model        = FilterModel::CONSTANT_VELOCITY;
+    float       meas_noise_r        = 0.16f;  // measurement noise variance (m^2)
+    float       process_noise_q     = 2.0f;   // process noise intensity
+    float       pos_cov_floor       = 0.1f;   // minimum position covariance diagonal
 };
 
 class ObjectTracker {
