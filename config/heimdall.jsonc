@@ -52,7 +52,7 @@
 
   // CSV tracker debug log (one row per update cycle).
   "log_tracking": true,
-  "log_path": "logs/tracker_log.csv",
+  "log_path": "logs/tracker_log.csv"
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
