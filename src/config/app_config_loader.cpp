@@ -41,6 +41,9 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         cfg.tracker.gate_distance       = t.value("gate_distance",       2.0f);
         cfg.tracker.clutter_density     = t.value("clutter_density",     1.0f);
         cfg.tracker.p_detection         = t.value("p_detection",         0.9f);
+        cfg.tracker.meas_noise_r        = t.value("meas_noise_r",        0.16f);
+        cfg.tracker.process_noise_q     = t.value("process_noise_q",     2.0f);
+        cfg.tracker.pos_cov_floor       = t.value("pos_cov_floor",       0.1f);
         if (t.contains("filter_model"))
             cfg.tracker.filter_model = parse_filter_model(
                 t.at("filter_model").get<std::string>());

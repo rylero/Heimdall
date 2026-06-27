@@ -4,26 +4,25 @@
 
 // ─── Constant-Position (CP) ───────────────────────────────────────────────────
 
-void kalman_predict_cp(Track& track, double dt_d) {
+void kalman_predict_cp(Track& track, double dt_d, const KalmanParams& kp) {
     constexpr int N = 2;
     const float dt = static_cast<float>(dt_d);
     auto& P = track.cov;
     // F = I2 — position unchanged (random walk); P = P + q*dt*I2
-    const float q = PROCESS_NOISE_Q;
-    P[0*N+0] += q * dt;
-    P[1*N+1] += q * dt;
+    P[0*N+0] += kp.process_noise_q * dt;
+    P[1*N+1] += kp.process_noise_q * dt;
 
-    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
-    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
+    P[0*N+0] = std::max(P[0*N+0], kp.pos_cov_floor);
+    P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
 }
 
-void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight) {
+void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
     if (total_weight <= 0.f) return;
     constexpr int N = 2;
     auto& x = track.state;
     auto& P = track.cov;
 
-    const float R   = MEAS_NOISE_R;
+    const float R   = kp.meas_noise_r;
     const float s00 = P[0*N+0] + R,  s01 = P[0*N+1];
     const float s10 = P[1*N+0],       s11 = P[1*N+1] + R;
     const float det = s00 * s11 - s01 * s10;
@@ -49,7 +48,7 @@ void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_we
 
 // ─── Constant-Velocity (CV) — renamed from original kalman_predict/update ───
 
-void kalman_predict_cv(Track& track, double dt_d) {
+void kalman_predict_cv(Track& track, double dt_d, const KalmanParams& kp) {
     constexpr int N = 4;
     const float dt = static_cast<float>(dt_d);
     auto& x = track.state;
@@ -70,7 +69,7 @@ void kalman_predict_cv(Track& track, double dt_d) {
         P[i*N+2] = FP[i*N+2];
         P[i*N+3] = FP[i*N+3];
     }
-    const float q   = PROCESS_NOISE_Q;
+    const float q   = kp.process_noise_q;
     const float dt2 = dt * dt, dt3 = dt2 * dt, dt4 = dt3 * dt;
     P[0*N+0] += q * dt4 / 4.f;
     P[1*N+1] += q * dt4 / 4.f;
@@ -79,17 +78,17 @@ void kalman_predict_cv(Track& track, double dt_d) {
     P[0*N+2] += q * dt3 / 2.f;   P[2*N+0] += q * dt3 / 2.f;
     P[1*N+3] += q * dt3 / 2.f;   P[3*N+1] += q * dt3 / 2.f;
 
-    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
-    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
+    P[0*N+0] = std::max(P[0*N+0], kp.pos_cov_floor);
+    P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
 }
 
-void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_weight) {
+void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
     if (total_weight <= 0.f) return;
     constexpr int N = 4;
     auto& x = track.state;
     auto& P = track.cov;
 
-    const float R   = MEAS_NOISE_R;
+    const float R   = kp.meas_noise_r;
     const float s00 = P[0*N+0] + R,  s01 = P[0*N+1];
     const float s10 = P[1*N+0],       s11 = P[1*N+1] + R;
     const float det = s00 * s11 - s01 * s10;
@@ -115,7 +114,7 @@ void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_we
 
 // ─── Constant-Acceleration (CA) ──────────────────────────────────────────────
 
-void kalman_predict_ca(Track& track, double dt_d) {
+void kalman_predict_ca(Track& track, double dt_d, const KalmanParams& kp) {
     constexpr int N = 6;
     const float dt  = static_cast<float>(dt_d);
     const float dt2 = dt * dt;
@@ -151,7 +150,7 @@ void kalman_predict_ca(Track& track, double dt_d) {
         P[i*N+5] = FP[i*N+5];
     }
     // Step 3: P += Q (discrete white-noise-jerk, x/y decoupled)
-    const float q   = PROCESS_NOISE_Q;
+    const float q   = kp.process_noise_q;
     const float dt3 = dt2 * dt, dt4 = dt3 * dt, dt5 = dt4 * dt;
     P[0*N+0] += q * dt5 / 20.f;
     P[1*N+1] += q * dt5 / 20.f;
@@ -166,17 +165,17 @@ void kalman_predict_ca(Track& track, double dt_d) {
     P[4*N+4] += q * dt;
     P[5*N+5] += q * dt;
 
-    P[0*N+0] = std::max(P[0*N+0], POS_COV_FLOOR);
-    P[1*N+1] = std::max(P[1*N+1], POS_COV_FLOOR);
+    P[0*N+0] = std::max(P[0*N+0], kp.pos_cov_floor);
+    P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
 }
 
-void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight) {
+void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
     if (total_weight <= 0.f) return;
     constexpr int N = 6;
     auto& x = track.state;
     auto& P = track.cov;
 
-    const float R   = MEAS_NOISE_R;
+    const float R   = kp.meas_noise_r;
     const float s00 = P[0*N+0] + R,  s01 = P[0*N+1];
     const float s10 = P[1*N+0],       s11 = P[1*N+1] + R;
     const float det = s00 * s11 - s01 * s10;
@@ -202,19 +201,19 @@ void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_we
 
 // ─── Dispatchers ─────────────────────────────────────────────────────────────
 
-void kalman_predict(Track& track, double dt) {
+void kalman_predict(Track& track, double dt, const KalmanParams& kp) {
     switch (track.model) {
-        case FilterModel::CONSTANT_POSITION:     kalman_predict_cp(track, dt); break;
-        case FilterModel::CONSTANT_VELOCITY:     kalman_predict_cv(track, dt); break;
-        case FilterModel::CONSTANT_ACCELERATION: kalman_predict_ca(track, dt); break;
+        case FilterModel::CONSTANT_POSITION:     kalman_predict_cp(track, dt, kp); break;
+        case FilterModel::CONSTANT_VELOCITY:     kalman_predict_cv(track, dt, kp); break;
+        case FilterModel::CONSTANT_ACCELERATION: kalman_predict_ca(track, dt, kp); break;
     }
 }
 
-void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight) {
+void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
     switch (track.model) {
-        case FilterModel::CONSTANT_POSITION:     kalman_update_cp(track, innov_x, innov_y, total_weight); break;
-        case FilterModel::CONSTANT_VELOCITY:     kalman_update_cv(track, innov_x, innov_y, total_weight); break;
-        case FilterModel::CONSTANT_ACCELERATION: kalman_update_ca(track, innov_x, innov_y, total_weight); break;
+        case FilterModel::CONSTANT_POSITION:     kalman_update_cp(track, innov_x, innov_y, total_weight, kp); break;
+        case FilterModel::CONSTANT_VELOCITY:     kalman_update_cv(track, innov_x, innov_y, total_weight, kp); break;
+        case FilterModel::CONSTANT_ACCELERATION: kalman_update_ca(track, innov_x, innov_y, total_weight, kp); break;
     }
 }
 
