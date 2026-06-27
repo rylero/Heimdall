@@ -42,11 +42,11 @@
   // y: distance left (positive) or right (negative) of robot centre
   // z: height above ground
   "robot_to_camera": {
-    "x":     0.30,
+    "x":     0.4064,  // 16 in forward
     "y":     0.00,
-    "z":     0.50,
+    "z":     0.5779,  // 22.75 in up
     "roll":  0.0,
-    "pitch": 0.0,
+    "pitch": 0.0,     // 0 = pointing straight forward
     "yaw":   0.0
   },
 

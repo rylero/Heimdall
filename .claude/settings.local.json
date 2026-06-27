@@ -72,11 +72,7 @@
       "Bash(./gradlew build *)",
       "Bash(./gradlew publishToMavenLocal)",
       "PowerShell(docker save heimdall:latest *)",
-      "PowerShell(git pull *)",
-      "PowerShell(git *)",
-      "PowerShell(Get-ChildItem C:\\\\Users\\\\ryan\\\\Dev\\\\HeimdalTest -Recurse -File | Where-Object { $_.Extension -in '.java','.gradle','.json','.md','.txt' } | Select-Object FullName | Sort-Object FullName)",
-      "PowerShell(Get-ChildItem C:\\\\Users\\\\ryan\\\\Dev\\\\Heimdall\\\\examples\\\\HeimdalTest -Recurse -File | Select-Object -ExpandProperty FullName | ForEach-Object { $_.Replace\\(\"C:\\\\Users\\\\ryan\\\\Dev\\\\Heimdall\\\\examples\\\\HeimdalTest\", \"\"\\) } | Sort-Object)",
-      "Bash(.venv/Scripts/python *)"
+      "PowerShell(git *)"
     ]
   }
 }
