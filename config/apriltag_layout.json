@@ -11,7 +11,7 @@
     "device": "/dev/video4",  // ← verify with: v4l2-ctl --list-devices
     "width":  640,
     "height": 480,
-    "fps":    10,
+    "fps":    30,
 
     // Calibrated intrinsics — replace these with output from calibrate_apriltag_camera.py
     "fx": 600.0,
