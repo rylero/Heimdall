@@ -56,5 +56,5 @@
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  // "apriltag_layout": "config/apriltag_layout.jsonc"  // disabled: 3 USB 2.0 cameras exceed 480Mbps HS bus capacity
+  // "apriltag_layout": "config/apriltag_layout.jsonc"
 }
