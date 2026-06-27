@@ -8,23 +8,23 @@
   // It must be forward/wall-facing so it can see AprilTags.
   // Intrinsics come from calibrate_apriltag_camera.py.
   "camera": {
-    "device": "/dev/video4",  // ← verify with: v4l2-ctl --list-devices
-    "width":  1280,
-    "height": 720,
+    "device": "/dev/video0",  // OV9281 monochrome — forward-facing apriltag camera
+    "width":  640,
+    "height": 480,
     "fps":    30,
 
-    // Calibrated intrinsics — 2026-06-27, 19 keyframes, avg err 0.171 px
-    "fx": 1077.5700702611311,
-    "fy": 1077.5864218873826,
-    "cx": 605.6919950680431,
-    "cy": 398.46663494944875,
+    // Intrinsics from cam0 calibration (OV9281, 640x480)
+    "fx": 539.8783,
+    "fy": 541.1769,
+    "cx": 353.8330,
+    "cy": 195.5427,
 
     // Radial/tangential distortion from calibration
-    "k1": -0.4475926117829959,
-    "k2":  0.2977503937949428,
-    "p1": -0.0017858628691716629,
-    "p2":  0.0019180370509349226,
-    "k3": -0.14288879446427022
+    "k1": -0.001437,
+    "k2":  0.081865,
+    "p1": -0.004672,
+    "p2": -0.002202,
+    "k3": -0.158375
   },
 
   // ── Robot-to-camera transform ────────────────────────────────────────────
