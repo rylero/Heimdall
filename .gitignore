@@ -32,4 +32,16 @@ training/runs/
 
 # AI assistant artifacts
 context-snapshot.json
+context-snapshot.md
 session-log.md
+.claude/scheduled_tasks.lock
+
+# Docker exports and temp files
+*.tar
+.tmp-*
+
+# Log / data dumps
+pose_range.json
+
+# Throwaway scripts
+training/test.py

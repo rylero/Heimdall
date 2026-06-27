@@ -55,7 +55,23 @@
       "Bash(build\\\\tests\\\\Debug\\\\heimdall_tracker_tests.exe [cp] *)",
       "PowerShell(& \"C:\\\\Users\\\\ryan\\\\Dev\\\\Heimdall\\\\build\\\\tests\\\\Debug\\\\heimdall_tracker_tests.exe\" \"[cp]\" \"--reporter\" \"console\")",
       "Bash(./build/tests/Debug/heimdall_tracker_tests.exe \"[ca]\" --reporter compact)",
-      "Bash(./build/tests/Debug/heimdall_tracker_tests.exe)"
+      "Bash(./build/tests/Debug/heimdall_tracker_tests.exe)",
+      "Bash(not exist *)",
+      "PowerShell(New-Item *)",
+      "Bash(echo \"---EXIT:$?\")",
+      "Read(//c/Users/ryan/Downloads/**)",
+      "Bash(tar -tzf dataset_v1.tar.gz)",
+      "Bash(tar -tzf \"C:\\\\Users\\\\ryan\\\\Downloads\\\\dataset_v1.tar.gz\")",
+      "Bash(grep -E \"^home/rchilka/Projects/rebuilt-model/dataset_store/dataset_v2/[^/]+/$\")",
+      "Bash(tar -tzf \"C:/Users/ryan/Downloads/dataset_v1.tar.gz\")",
+      "PowerShell(tar -tzf \"$env:USERPROFILE\\\\Downloads\\\\dataset_v1.tar.gz\" | Select-String \"data.yaml\")",
+      "PowerShell(Move-Item *)",
+      "Bash(New-Item -Path \"C:\\\\Users\\\\ryan\\\\Dev\\\\Heimdall\\\\tools\\\\calibrate.py\" -ItemType File -Force)",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"created\")",
+      "Bash(./gradlew build *)",
+      "Bash(./gradlew publishToMavenLocal)",
+      "PowerShell(docker save heimdall:latest *)"
     ]
   }
 }
