@@ -1,37 +1,27 @@
 {
-  // Camera 1 — object detection, floor-facing, RIGHT side of robot
-  "id":        1,
-  "type":      "usb",
-  "device":    "/dev/video2", // ← verify with: v4l2-ctl --list-devices
-
-  "width":     640,
-  "height":    480,
-  "fps":       60,
-  "hw_decode": true,
+  "id": 1,
+  "type": "usb",
+  "device": "/dev/video2",
+  "width": 640,
+  "height": 480,
+  "fps": 100,
+  "hw_decode": false,
   "mirror_of": -1,
-  "flip_h":    false,
-  "flip_v":    false,
-
+  "flip_h": true,
+  "flip_v": true,
   "intrinsics": {
-    "fx": 600.0,
-    "fy": 600.0,
-    "cx": 320.0,
-    "cy": 240.0,
-    "distortion": {
-      "k1": 0.0,
-      "k2": 0.0,
-      "p1": 0.0,
-      "p2": 0.0,
-      "k3": 0.0
-    }
+    "fx": 544.3636,
+    "fy": 545.4340,
+    "cx": 364.6463,
+    "cy": 202.9345,
+    "distortion": { "k1": 0.038851, "k2": -0.024808, "p1": -0.002037, "p2": 0.001136, "k3": -0.050184 }
   },
-
   "extrinsics": {
-    "tx":    0.20,
-    "ty":   -0.15,
-    "tz":    0.30,
-    "yaw":   0.0,
-    "pitch": -1.5708,
-    "roll":  0.0
+    "tx": 0.0,
+    "ty": -0.0889,
+    "tz": 0.5207,
+    "yaw": -0.4363,
+    "pitch": 0.5061,
+    "roll": 0.0
   }
 }

@@ -37,5 +37,15 @@ services:
       - /dev/video1:/dev/video1
     restart: unless-stopped
 
+  replay:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.replay
+    volumes:
+      - ../recordings:/recordings
+      - ../config:/app/config
+      - ../logs:/app/logs
+    # Usage: docker compose run --rm replay <recording.jsonl> /app/config <output.jsonl>
+
 volumes:
   heimdall-data:

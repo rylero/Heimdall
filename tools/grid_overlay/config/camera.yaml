@@ -1,0 +1,26 @@
+# OpenCV camera calibration format
+# Edit these values or load via -c flag
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [640.0, 0.0, 320.0,
+          0.0, 640.0, 240.0,
+          0.0,   0.0,   1.0]
+
+dist_coeffs:
+  rows: 1
+  cols: 5
+  data: [0.0, 0.0, 0.0, 0.0, 0.0]
+
+# Extrinsics: camera pose relative to ground plane
+extrinsics:
+  height_m: 1.0       # camera height above ground
+  pitch_deg: -15.0    # negative = tilted down
+  roll_deg: 0.0
+  yaw_deg: 0.0
+
+# Grid settings
+grid:
+  range_m: 4.0
+  spacing_m: 0.5
+  units: m            # m or ft

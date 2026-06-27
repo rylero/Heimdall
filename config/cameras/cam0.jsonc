@@ -1,53 +1,27 @@
 {
-  // Camera 0 — object detection, floor-facing, LEFT side of robot
-  "id":        0,
-  "type":      "usb",         // "usb" or "csi"
-  "device":    "/dev/video0", // ← verify with: v4l2-ctl --list-devices
-
-  // Capture resolution and frame rate
-  "width":     640,
-  "height":    480,
-  "fps":       60,
-
-  // Use NVDEC hardware decoder inside DeepStream pipeline
-  "hw_decode": true,
-
-  // If this camera sees the same scene as another camera but mirrored,
-  // set mirror_of to that camera's id.  -1 = not a mirror.
+  "id": 0,
+  "type": "usb",
+  "device": "/dev/video0",
+  "width": 640,
+  "height": 480,
+  "fps": 100,
+  "hw_decode": false,
   "mirror_of": -1,
-
-  // Flip the image before inference (e.g. camera mounted upside-down)
-  "flip_h": false,
-  "flip_v": false,
-
-  // ── Intrinsics ───────────────────────────────────────────────────────────
-  // Calibrated values from camera_calibrate.py (replace placeholders).
-  // fx/fy: focal lengths in pixels.  cx/cy: principal point in pixels.
+  "flip_h": true,
+  "flip_v": true,
   "intrinsics": {
-    "fx": 600.0,
-    "fy": 600.0,
-    "cx": 320.0,
-    "cy": 240.0,
-    "distortion": {
-      "k1": 0.0,
-      "k2": 0.0,
-      "p1": 0.0,
-      "p2": 0.0,
-      "k3": 0.0
-    }
+    "fx": 539.8783,
+    "fy": 541.1769,
+    "cx": 353.8330,
+    "cy": 195.5427,
+    "distortion": { "k1": -0.001437, "k2": 0.081865, "p1": -0.004672, "p2": -0.002202, "k3": -0.158375 }
   },
-
-  // ── Extrinsics ───────────────────────────────────────────────────────────
-  // Position of the camera optical centre relative to the robot's centre of
-  // rotation, in metres.  Axes: +X = forward, +Y = left, +Z = up.
-  // tx/ty/tz: translation.  yaw/pitch/roll: camera orientation in radians,
-  // applied ZYX (yaw first).  pitch is typically -pi/2 for floor-facing.
   "extrinsics": {
-    "tx":    0.20,
-    "ty":    0.15,
-    "tz":    0.30,
-    "yaw":   0.0,
-    "pitch": -1.5708,
-    "roll":  0.0
+    "tx": 0.0,
+    "ty": 0.0889,
+    "tz": 0.5207,
+    "yaw": 0.4363,
+    "pitch": 0.5061,
+    "roll": 0.0
   }
 }

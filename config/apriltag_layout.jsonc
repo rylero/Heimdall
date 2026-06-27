@@ -9,22 +9,22 @@
   // Intrinsics come from calibrate_apriltag_camera.py.
   "camera": {
     "device": "/dev/video4",  // ← verify with: v4l2-ctl --list-devices
-    "width":  640,
-    "height": 480,
+    "width":  1280,
+    "height": 720,
     "fps":    30,
 
-    // Calibrated intrinsics — replace these with output from calibrate_apriltag_camera.py
-    "fx": 600.0,
-    "fy": 600.0,
-    "cx": 320.0,
-    "cy": 240.0,
+    // Calibrated intrinsics — 2026-06-27, 19 keyframes, avg err 0.171 px
+    "fx": 1077.5700702611311,
+    "fy": 1077.5864218873826,
+    "cx": 605.6919950680431,
+    "cy": 398.46663494944875,
 
-    // Radial/tangential distortion from calibration (optional, 0 = assume none)
-    "k1": 0.0,
-    "k2": 0.0,
-    "p1": 0.0,
-    "p2": 0.0,
-    "k3": 0.0
+    // Radial/tangential distortion from calibration
+    "k1": -0.4475926117829959,
+    "k2":  0.2977503937949428,
+    "p1": -0.0017858628691716629,
+    "p2":  0.0019180370509349226,
+    "k3": -0.14288879446427022
   },
 
   // ── Robot-to-camera transform ────────────────────────────────────────────
