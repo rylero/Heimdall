@@ -56,5 +56,5 @@
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  "apriltag_layout": "config/apriltag_layout.jsonc"
+  // "apriltag_layout": "config/apriltag_layout.jsonc"  // disabled: USB bandwidth conflict with 3 cameras
 }
