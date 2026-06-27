@@ -1,14 +1,16 @@
 #pragma once
 #include "track.h"
 
-// Measurement noise variance (m^2). ~0.2m dynamic pose error for a moving ball: 0.2^2 = 0.04
-inline constexpr float MEAS_NOISE_R    = 0.04f;
+// Measurement noise variance (m^2). On-robot measurements showed jitter on a stationary
+// target closer to ~0.4m dynamic pose error: 0.4^2 = 0.16. Was 0.04 (0.2m) -- too low,
+// causing the filter to chase camera noise instead of smoothing it out.
+inline constexpr float MEAS_NOISE_R    = 0.16f;
 // Process noise intensity. Higher = trust detections more, allow faster acceleration.
 inline constexpr float PROCESS_NOISE_Q = 2.0f;
 // Minimum position covariance diagonal. Prevents Kalman gain collapsing to ~0 on long tracks
 // AND keeps per-frame correction (K * beta * gap) strong enough that a moving ball converges
 // to a small steady-state lag rather than an equilibrium near the Mahalanobis gate edge.
-// Floor=0.1 gives K >= 0.1/(0.1+0.04) ~= 0.71 (71% measurement weight minimum).
+// Floor=0.1 gives K >= 0.1/(0.1+0.16) ~= 0.38 (38% measurement weight minimum).
 inline constexpr float POS_COV_FLOOR   = 0.1f;
 
 // Per-model predict (each uses its own stride N = 2, 4, or 6).

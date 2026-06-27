@@ -6,7 +6,8 @@ CommLayer::CommLayer(Config config)
     : ctx_(1),
       pull_sock_(ctx_, zmq::socket_type::pull),
       push_sock_(ctx_, zmq::socket_type::push),
-      raw_pub_sock_(ctx_, zmq::socket_type::pub)
+      raw_pub_sock_(ctx_, zmq::socket_type::pub),
+      vision_pub_sock_(ctx_, zmq::socket_type::pub)
 {
     pull_sock_.set(zmq::sockopt::rcvtimeo, 0);
     pull_sock_.bind(config.pose_bind_addr);
@@ -15,6 +16,11 @@ CommLayer::CommLayer(Config config)
     if (!config.raw_output_bind_addr.empty()) {
         raw_pub_sock_.bind(config.raw_output_bind_addr);
         raw_enabled_ = true;
+    }
+
+    if (!config.vision_pose_bind_addr.empty()) {
+        vision_pub_sock_.bind(config.vision_pose_bind_addr);
+        vision_enabled_ = true;
     }
 }
 
@@ -71,6 +77,21 @@ void CommLayer::send_frame(const std::vector<TrackEvent>& events,
     } catch (const zmq::error_t&) {
         // No receiver connected — drop frame rather than stall the pipeline thread.
     }
+}
+
+void CommLayer::send_vision_pose(float x, float y, float heading_rad, uint64_t timestamp_ns) {
+    if (!vision_enabled_) return;
+
+    heimdall::VisionPoseMsg msg;
+    msg.set_x(x);
+    msg.set_y(y);
+    msg.set_heading(heading_rad);
+    msg.set_timestamp_ns(timestamp_ns);
+
+    std::string bytes = msg.SerializeAsString();
+    try {
+        vision_pub_sock_.send(zmq::buffer(bytes), zmq::send_flags::dontwait);
+    } catch (const zmq::error_t&) {}
 }
 
 void CommLayer::publish_raw(const std::vector<Detection>& detections,

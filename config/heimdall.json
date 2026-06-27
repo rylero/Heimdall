@@ -1,0 +1,50 @@
+{
+  // Directory containing per-camera JSON files (one file per camera, sorted by name).
+  "cameras_dir": "config/cameras",
+
+  // Path to the DeepStream/TensorRT inference config (nvinfer plugin config file).
+  "infer_config": "config/infer_yolo26n.txt",
+
+  // JPDAF tracker parameters.
+  "tracker": {
+    // Frames a new track must be confirmed by a detection before being reported.
+    "confirmation_frames": 2,
+
+    // Frames without a matching detection before a track is declared LOST.
+    "loss_frames": 15,
+
+    // Mahalanobis gate distance: detections further than this from any track are
+    // treated as new-object candidates rather than measurement updates (meters).
+    "gate_distance": 2.0,
+
+    // Expected density of false-positive (clutter) detections per m².
+    // Higher = tracker is less eager to create new tracks on single detections.
+    "clutter_density": 1.0,
+
+    // Probability that a real object generates a detection each frame.
+    "p_detection": 0.9,
+
+    // Kalman filter motion model.
+    // Options: "constant_position", "constant_velocity", "constant_acceleration"
+    "filter_model": "constant_velocity"
+  },
+
+  // ZeroMQ bind addresses (all on the Jetson side).
+  "comm": {
+    "pose_bind_addr":        "tcp://*:5555",  // PULL  — robot pose in  (~50 Hz)
+    "output_bind_addr":      "tcp://*:5556",  // PUSH  — track events out (~30 Hz)
+    "raw_output_bind_addr":  "tcp://*:5557",  // PUB   — raw pixel detections (debug)
+    "vision_pose_bind_addr": "tcp://*:5558"   // PUB   — AprilTag pose estimate (~10 Hz)
+  },
+
+  // Set true to skip the tracker and forward raw detections directly.
+  "bypass_tracker": false,
+
+  // CSV tracker debug log (one row per update cycle).
+  "log_tracking": true,
+  "log_path": "logs/tracker_log.csv",
+
+  // Path to AprilTag field layout + camera calibration JSON.
+  // Comment out or remove this key to disable AprilTag pose correction.
+  "apriltag_layout": "config/apriltag_layout.json"
+}

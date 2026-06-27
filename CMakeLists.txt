@@ -141,6 +141,39 @@ target_include_directories(mock_robot PRIVATE
 target_link_libraries(mock_robot PRIVATE heimdall_comm libzmq cppzmq)
 
 # ---------------------------------------------------------------------------
+# OpenCV (available in DeepStream base image; used by AprilTag detector)
+# ---------------------------------------------------------------------------
+find_package(OpenCV QUIET COMPONENTS core calib3d)
+
+# ---------------------------------------------------------------------------
+# apriltag C library (libapriltag-dev)
+# ---------------------------------------------------------------------------
+find_library(APRILTAG_LIB apriltag)
+find_path(APRILTAG_INCLUDE apriltag.h PATH_SUFFIXES apriltag)
+
+if(OpenCV_FOUND AND APRILTAG_LIB AND APRILTAG_INCLUDE)
+    add_library(heimdall_apriltag
+        src/apriltag/tag_layout.cpp
+        src/apriltag/apriltag_detector.cpp
+    )
+    target_include_directories(heimdall_apriltag PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${APRILTAG_INCLUDE}
+        ${OpenCV_INCLUDE_DIRS}
+    )
+    # Link only core + calib3d — avoids opencv_videoio and its FFmpeg dep chain
+    target_link_libraries(heimdall_apriltag
+        PUBLIC nlohmann_json::nlohmann_json
+        PRIVATE ${APRILTAG_LIB} opencv_core opencv_calib3d
+    )
+    set(HEIMDALL_APRILTAG_AVAILABLE TRUE)
+    message(STATUS "AprilTag detector: enabled (OpenCV ${OpenCV_VERSION}, apriltag ${APRILTAG_LIB})")
+else()
+    set(HEIMDALL_APRILTAG_AVAILABLE FALSE)
+    message(STATUS "AprilTag detector: disabled (OpenCV_FOUND=${OpenCV_FOUND}, APRILTAG_LIB=${APRILTAG_LIB})")
+endif()
+
+# ---------------------------------------------------------------------------
 # GStreamer (available inside DeepStream Docker image)
 # ---------------------------------------------------------------------------
 find_package(PkgConfig QUIET)
@@ -185,6 +218,7 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
         src/main.cpp
         src/app/heimdall_app.cpp
         src/config/camera_config_loader.cpp
+        src/config/app_config_loader.cpp
     )
     target_include_directories(heimdall PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -194,6 +228,10 @@ if(GST_FOUND AND NVDS_META_LIB AND NVDSGST_META_LIB)
         heimdall_comm
         nlohmann_json::nlohmann_json
     )
+    if(HEIMDALL_APRILTAG_AVAILABLE)
+        target_link_libraries(heimdall heimdall_apriltag)
+        target_compile_definitions(heimdall PRIVATE HEIMDALL_APRILTAG_ENABLED)
+    endif()
 
     # RFDetr bbox parser shared library
     add_subdirectory(src/models/bbox_parser)

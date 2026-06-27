@@ -1,4 +1,5 @@
 #include "heimdall_app.h"
+#include "apriltag/tag_layout.h"
 #include <chrono>
 #include <cstdio>
 
@@ -10,6 +11,20 @@ HeimdallApp::HeimdallApp(Config config)
       pipeline_(config_.pipeline_cameras, config_.infer_config_path,
                 [this](const std::vector<Detection>& d){ enqueue_detections(d); })
 {
+    if (config_.apriltag_layout_path) {
+        try {
+            AprilTagLayout layout = load_apriltag_layout(*config_.apriltag_layout_path);
+            at_detector_ = std::make_unique<AprilTagDetector>(std::move(layout));
+            if (!at_detector_->is_open()) {
+                std::fprintf(stderr, "[apriltag] camera failed to open — AprilTag disabled\n");
+                at_detector_.reset();
+            } else {
+                std::printf("[apriltag] detector ready\n");
+            }
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[apriltag] layout load failed: %s\n", e.what());
+        }
+    }
     if (config_.log_tracking) {
         log_file_.open(config_.log_path);
         log_file_ << "ts_s,source,track_id,x,y,conf\n";
@@ -121,10 +136,28 @@ void HeimdallApp::pose_recv_loop() {
     }
 }
 
+void HeimdallApp::apriltag_loop() {
+    while (running_) {
+        RobotPose cur = pose_buffer_.closest(0); // get latest pose for disambiguation
+        auto result = at_detector_->detect(cur.x, cur.y);
+        if (result) {
+            comm_.send_vision_pose(
+                static_cast<float>(result->x),
+                static_cast<float>(result->y),
+                static_cast<float>(result->heading_rad),
+                result->timestamp_ns);
+        }
+        // Camera FPS (~10 Hz) paces this loop — no explicit sleep needed.
+    }
+}
+
 void HeimdallApp::run() {
     running_ = true;
     det_worker_thread_ = std::thread([this]{ det_worker_loop(); });
     pose_recv_thread_  = std::thread([this]{ pose_recv_loop(); });
+    if (at_detector_) {
+        at_thread_ = std::thread([this]{ apriltag_loop(); });
+    }
     pipeline_.run();  // blocks until stop() or pipeline error
 }
 
@@ -133,8 +166,7 @@ void HeimdallApp::stop() {
     running_ = false;
     det_cv_.notify_all();
     pipeline_.stop();
-    if (det_worker_thread_.joinable())
-        det_worker_thread_.join();
-    if (pose_recv_thread_.joinable())
-        pose_recv_thread_.join();
+    if (det_worker_thread_.joinable()) det_worker_thread_.join();
+    if (pose_recv_thread_.joinable())  pose_recv_thread_.join();
+    if (at_thread_.joinable())         at_thread_.join();
 }

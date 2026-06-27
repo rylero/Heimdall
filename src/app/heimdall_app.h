@@ -1,5 +1,7 @@
 #pragma once
 #include "app/pose_buffer.h"
+#include "apriltag/apriltag_detector.h"
+#include "apriltag/tag_layout.h"
 #include "comm/comm_layer.h"
 #include "pipeline/camera_source.h"
 #include "pipeline/pipeline.h"
@@ -9,6 +11,7 @@
 #include <condition_variable>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <string>
 #include <thread>
@@ -20,14 +23,15 @@ public:
         // pipeline_cameras: device path + resolution for DeepStreamPipeline (CameraConfig)
         // pose_cameras:     intrinsics + extrinsics for PoseEstimator (CameraParams)
         // Both vectors must be the same length and in the same camera order.
-        std::vector<CameraConfig>  pipeline_cameras;
-        std::vector<CameraParams>  pose_cameras;
-        std::string                infer_config_path;
-        ObjectTracker::Config      tracker;
-        CommLayer::Config          comm;
-        bool                       bypass_tracker = false;
-        bool                       log_tracking   = false;
-        std::string                log_path       = "tracker_log.csv";
+        std::vector<CameraConfig>         pipeline_cameras;
+        std::vector<CameraParams>         pose_cameras;
+        std::string                       infer_config_path;
+        ObjectTracker::Config             tracker;
+        CommLayer::Config                 comm;
+        bool                              bypass_tracker = false;
+        bool                              log_tracking   = false;
+        std::string                       log_path       = "tracker_log.csv";
+        std::optional<std::string>        apriltag_layout_path; // nullopt = disabled
     };
 
     explicit HeimdallApp(Config config);
@@ -57,8 +61,12 @@ private:
     std::condition_variable            det_cv_;
     std::thread                        det_worker_thread_;
 
+    std::unique_ptr<AprilTagDetector> at_detector_;
+    std::thread                       at_thread_;
+
     void on_detections(const std::vector<Detection>& dets);
     void enqueue_detections(const std::vector<Detection>& dets);
     void det_worker_loop();
     void pose_recv_loop();
+    void apriltag_loop();
 };

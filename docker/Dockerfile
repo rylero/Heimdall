@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     libgstreamer-plugins-base1.0-dev \
     git \
     ccache \
+    libapriltag-dev \
+    libopencv-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,12 +22,13 @@ COPY proto/ proto/
 COPY tests/CMakeLists.txt tests/CMakeLists.txt
 # Stub source files so cmake configure succeeds before real sources are copied
 RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
-             src/models/bbox_parser src/config tools tests && \
+             src/apriltag src/models/bbox_parser src/config tools tests && \
     touch src/tracker/kalman.cpp src/tracker/jpda.cpp src/tracker/tracker.cpp \
           src/pose/pose_estimator.cpp \
           src/comm/comm_layer.cpp \
           src/pipeline/camera_source.cpp src/pipeline/probe.cpp src/pipeline/pipeline.cpp \
           src/app/heimdall_app.cpp src/main.cpp \
+          src/apriltag/tag_layout.cpp src/apriltag/apriltag_detector.cpp \
           src/models/bbox_parser/rfdetr_parser.cpp \
           src/models/bbox_parser/yolo_parser.cpp \
           src/config/camera_config_loader.cpp \

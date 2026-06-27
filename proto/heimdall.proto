@@ -51,3 +51,12 @@ message RawDetectionFrameMsg {
     repeated RawDetectionMsg detections  = 1;
     uint64                   timestamp_ns = 2;
 }
+
+// Vision-based robot pose estimate derived from AprilTag detection on the Jetson.
+// Sent from Jetson → robot on port 5558 (PUB) so the robot can call addVisionMeasurement().
+message VisionPoseMsg {
+    float  x            = 1;
+    float  y            = 2;
+    float  heading      = 3;
+    uint64 timestamp_ns = 4;
+}

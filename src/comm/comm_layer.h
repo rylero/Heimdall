@@ -10,9 +10,10 @@
 class CommLayer {
 public:
     struct Config {
-        std::string pose_bind_addr;        // Jetson PULL — receives robot pose
-        std::string output_bind_addr;      // Jetson PUSH — sends track events
-        std::string raw_output_bind_addr;  // Jetson PUB  — raw pixel detections (empty = disabled)
+        std::string pose_bind_addr;         // Jetson PULL — receives robot pose
+        std::string output_bind_addr;       // Jetson PUSH — sends track events
+        std::string raw_output_bind_addr;   // Jetson PUB  — raw pixel detections (empty = disabled)
+        std::string vision_pose_bind_addr;  // Jetson PUB  — AprilTag vision pose  (empty = disabled)
     };
 
     // Received robot pose tagged with Jetson CLOCK_MONOTONIC reception time.
@@ -34,6 +35,11 @@ public:
     void publish_raw(const std::vector<Detection>& detections,
                      uint64_t timestamp_ns);
 
+    // Publish an AprilTag-derived robot pose estimate to port 5558.
+    // Robot subscribes and calls addVisionMeasurement().
+    // No-op if vision_pose_bind_addr was empty at construction.
+    void send_vision_pose(float x, float y, float heading_rad, uint64_t timestamp_ns);
+
     zmq::context_t& context() { return ctx_; }
 
 private:
@@ -41,5 +47,7 @@ private:
     zmq::socket_t  pull_sock_;
     zmq::socket_t  push_sock_;
     zmq::socket_t  raw_pub_sock_;
-    bool           raw_enabled_ = false;
+    zmq::socket_t  vision_pub_sock_;
+    bool           raw_enabled_    = false;
+    bool           vision_enabled_ = false;
 };

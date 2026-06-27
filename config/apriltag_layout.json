@@ -1,0 +1,80 @@
+{
+  // Physical side length of each AprilTag square in metres.
+  // 2025 FRC official: 0.1651 m (6.5 in).  Measure your actual printed tags.
+  "tag_size_meters": 0.1651,
+
+  // ── AprilTag camera ──────────────────────────────────────────────────────
+  // This is a SEPARATE USB camera from the two object-detection cameras.
+  // It must be forward/wall-facing so it can see AprilTags.
+  // Intrinsics come from calibrate_apriltag_camera.py.
+  "camera": {
+    "device": "/dev/video4",  // ← verify with: v4l2-ctl --list-devices
+    "width":  640,
+    "height": 480,
+    "fps":    10,
+
+    // Calibrated intrinsics — replace these with output from calibrate_apriltag_camera.py
+    "fx": 600.0,
+    "fy": 600.0,
+    "cx": 320.0,
+    "cy": 240.0,
+
+    // Radial/tangential distortion from calibration (optional, 0 = assume none)
+    "k1": 0.0,
+    "k2": 0.0,
+    "p1": 0.0,
+    "p2": 0.0,
+    "k3": 0.0
+  },
+
+  // ── Robot-to-camera transform ────────────────────────────────────────────
+  // Position and orientation of the AprilTag camera relative to the robot's
+  // centre of rotation (the origin of the robot coordinate frame).
+  // Axes: +X = forward, +Y = left, +Z = up.
+  //
+  //   x, y, z  — camera optical centre position in metres
+  //   roll     — rotation around X axis (radians); 0 for upright camera
+  //   pitch    — rotation around Y axis (radians); negative tilts the camera down
+  //   yaw      — rotation around Z axis (radians); 0 = camera faces robot-forward
+  //
+  // Measurement tip: put a tape measure on the robot frame.
+  // x: distance from robot centre to camera along robot-forward
+  // y: distance left (positive) or right (negative) of robot centre
+  // z: height above ground
+  "robot_to_camera": {
+    "x":     0.30,
+    "y":     0.00,
+    "z":     0.50,
+    "roll":  0.0,
+    "pitch": 0.0,
+    "yaw":   0.0
+  },
+
+  // ── Field AprilTag poses ─────────────────────────────────────────────────
+  // One entry per tag visible from your field / arena.
+  // Get official FRC field tag positions from:
+  //   https://github.com/wpilibsuite/allwpilib/tree/main/apriltag/src/main/native/resources/edu/wpi/first/apriltag
+  // Download the JSON for your game year, then extract each tag's
+  // translation (x, y, z metres) and rotation.
+  //
+  // For FRC tag poses, rotation is given as a quaternion.
+  // Convert quaternion (w,x,y,z) to yaw with:
+  //   yaw = atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+  // roll and pitch are 0 for wall-mounted tags (facing horizontally).
+  //
+  // x, y: tag centre position on the field in metres (origin = blue alliance
+  //       wall corner per WPILib convention).
+  // z:    height of tag centre above the floor in metres.
+  // yaw:  which direction the tag faces (0 = facing +X / toward red alliance).
+  "tags": [
+    {
+      "id":    1,
+      "x":     0.0,
+      "y":     0.0,
+      "z":     0.5,
+      "roll":  0.0,
+      "pitch": 0.0,
+      "yaw":   0.0
+    }
+  ]
+}

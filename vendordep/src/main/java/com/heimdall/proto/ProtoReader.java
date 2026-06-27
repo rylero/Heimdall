@@ -4,6 +4,7 @@ import com.heimdall.DetectionFrame;
 import com.heimdall.TrackEvent;
 import com.heimdall.TrackEventType;
 import com.heimdall.TrackedObject;
+import com.heimdall.VisionPoseEstimate;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -36,6 +37,37 @@ import java.util.List;
  */
 public final class ProtoReader {
     private ProtoReader() {}
+
+    /**
+     * Parses a VisionPoseMsg (wire-identical to RobotPoseMsg: x/y/heading floats + timestamp_ns varint).
+     *
+     *   VisionPoseMsg {
+     *     float  x            = 1;  tag 0x0D (field 1, wire 5)
+     *     float  y            = 2;  tag 0x15
+     *     float  heading      = 3;  tag 0x1D
+     *     uint64 timestamp_ns = 4;  tag 0x20 (varint)
+     *   }
+     */
+    public static VisionPoseEstimate parseVisionPose(byte[] data) {
+        ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
+        float x = 0, y = 0, heading = 0;
+        long  timestampNs = 0;
+
+        while (buf.hasRemaining()) {
+            long tag     = readVarint(buf);
+            int  field   = (int)(tag >>> 3);
+            int  wireType = (int)(tag & 0x7);
+
+            switch (field) {
+                case 1: x           = buf.getFloat();   break;
+                case 2: y           = buf.getFloat();   break;
+                case 3: heading     = buf.getFloat();   break;
+                case 4: timestampNs = readVarint(buf);  break;
+                default: skipField(buf, wireType);       break;
+            }
+        }
+        return new VisionPoseEstimate(x, y, heading, timestampNs);
+    }
 
     public static DetectionFrame parseDetectionFrame(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);

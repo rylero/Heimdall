@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
+import org.zeromq.ZMQException;
 
 /**
  * ZeroMQ client that talks to a running Heimdall instance on the Jetson.
@@ -34,8 +35,9 @@ import org.zeromq.ZMQ;
  */
 public final class HeimdallClient implements AutoCloseable {
 
-    public static final int DEFAULT_POSE_PORT      = 5555;
-    public static final int DEFAULT_DETECTION_PORT = 5556;
+    public static final int DEFAULT_POSE_PORT       = 5555;
+    public static final int DEFAULT_DETECTION_PORT  = 5556;
+    public static final int DEFAULT_VISION_POSE_PORT = 5558;
 
     // Jetson healthy timeout: if no frame arrives within this many ms, isHealthy() → false.
     private static final long STALE_FRAME_MS = 500;
@@ -43,6 +45,7 @@ public final class HeimdallClient implements AutoCloseable {
     private final String jetsonHost;
     private final int posePort;
     private final int detectionPort;
+    private final int visionPosePort;
 
     private final ZContext zmqCtx = new ZContext();
 
@@ -50,20 +53,22 @@ public final class HeimdallClient implements AutoCloseable {
     private final AtomicReference<PoseSnapshot> pendingPose = new AtomicReference<>();
 
     // IO thread writes; main thread reads.
-    private final AtomicReference<DetectionFrame> latestFrame = new AtomicReference<>();
-    private final AtomicLong lastFrameMs = new AtomicLong(0);
+    private final AtomicReference<DetectionFrame>    latestFrame     = new AtomicReference<>();
+    private final AtomicLong                         lastFrameMs     = new AtomicLong(0);
+    private final AtomicReference<VisionPoseEstimate> latestVisionPose = new AtomicReference<>();
 
     private volatile boolean running = true;
     private final Thread ioThread;
 
     public HeimdallClient(String jetsonHost) {
-        this(jetsonHost, DEFAULT_POSE_PORT, DEFAULT_DETECTION_PORT);
+        this(jetsonHost, DEFAULT_POSE_PORT, DEFAULT_DETECTION_PORT, DEFAULT_VISION_POSE_PORT);
     }
 
-    public HeimdallClient(String jetsonHost, int posePort, int detectionPort) {
+    public HeimdallClient(String jetsonHost, int posePort, int detectionPort, int visionPosePort) {
         this.jetsonHost    = jetsonHost;
         this.posePort      = posePort;
         this.detectionPort = detectionPort;
+        this.visionPosePort = visionPosePort;
 
         ioThread = new Thread(this::ioLoop, "heimdall-io");
         ioThread.setDaemon(true);
@@ -97,6 +102,15 @@ public final class HeimdallClient implements AutoCloseable {
      */
     public DetectionFrame getLatestFrame() {
         return latestFrame.get();
+    }
+
+    /**
+     * Returns the most recent AprilTag-derived vision pose from the Jetson, or {@code null}
+     * if no estimate has arrived yet. Each call returns the same object until a new one arrives.
+     * Consume this in periodic() and call drive.addVisionMeasurement().
+     */
+    public VisionPoseEstimate getLatestVisionPose() {
+        return latestVisionPose.getAndSet(null); // consume once
     }
 
     /**
@@ -136,12 +150,16 @@ public final class HeimdallClient implements AutoCloseable {
     // -------------------------------------------------------------------------
 
     private void ioLoop() {
-        ZMQ.Socket push = zmqCtx.createSocket(SocketType.PUSH);
-        ZMQ.Socket pull = zmqCtx.createSocket(SocketType.PULL);
+        ZMQ.Socket push       = zmqCtx.createSocket(SocketType.PUSH);
+        ZMQ.Socket pull       = zmqCtx.createSocket(SocketType.PULL);
+        ZMQ.Socket visionSub  = zmqCtx.createSocket(SocketType.SUB);
         try {
             push.connect("tcp://" + jetsonHost + ":" + posePort);
             pull.setReceiveTimeOut(5); // 5 ms receive timeout → ~200 Hz poll rate
             pull.connect("tcp://" + jetsonHost + ":" + detectionPort);
+            visionSub.setReceiveTimeOut(0); // non-blocking
+            visionSub.connect("tcp://" + jetsonHost + ":" + visionPosePort);
+            visionSub.subscribe(new byte[0]); // subscribe to all messages
 
             while (running) {
                 // 1. Drain pending pose — take the most recent one, discard older.
@@ -164,6 +182,14 @@ public final class HeimdallClient implements AutoCloseable {
                         // malformed message — drop silently
                     }
                 }
+
+                // 3. Poll vision pose (non-blocking, ~10 Hz from Jetson).
+                byte[] vdata = visionSub.recv(ZMQ.DONTWAIT);
+                if (vdata != null && vdata.length > 0) {
+                    try {
+                        latestVisionPose.set(ProtoReader.parseVisionPose(vdata));
+                    } catch (Exception ignored) {}
+                }
             }
         } catch (org.zeromq.ZMQException e) {
             // ETERM = context closed during recv; expected on shutdown
@@ -173,6 +199,7 @@ public final class HeimdallClient implements AutoCloseable {
         } finally {
             push.close();
             pull.close();
+            visionSub.close();
         }
     }
 
