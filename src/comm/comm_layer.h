@@ -9,9 +9,9 @@
 class CommLayer {
 public:
     struct Config {
-        std::string pose_bind_addr;         // Jetson PULL — receives robot pose
-        std::string output_bind_addr;       // Jetson PUB  — sends track events
-        std::string vision_pose_bind_addr;  // Jetson PUB  — AprilTag vision pose  (empty = disabled)
+        std::string pose_bind_addr        = "tcp://*:5555";  // Jetson PULL — receives robot pose
+        std::string output_bind_addr      = "tcp://*:5556";  // Jetson PUB  — sends track events
+        std::string vision_pose_bind_addr = "tcp://*:5558";  // Jetson PUB  — AprilTag vision pose
     };
 
     // Received robot pose tagged with Jetson CLOCK_MONOTONIC reception time.
