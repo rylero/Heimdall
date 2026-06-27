@@ -4,9 +4,9 @@ Real-time object tracking and AprilTag pose estimation for FRC robots. Runs on a
 
 ## What it does
 
-- Ingests two USB cameras through NVIDIA DeepStream (hardware-accelerated inference)
-- Detects game pieces using a custom RF-DETR model (trained on your game piece)
-- Tracks detections across frames with a JPDAF Kalman filter (handles occlusion and multiple objects)
+- Ingests two USB cameras through NVIDIA DeepStream
+- Detects game pieces using a custom RF-DETR OR YOLOv26
+- Tracks detections across frames with a JPDAF Kalman filterr
 - Projects field-relative positions using robot pose received from the RoboRIO
 - Publishes track events (CONFIRMED / UPDATED / LOST) to the robot over ZMQ
 - Detects AprilTags on a third camera and sends pose corrections back to the robot
