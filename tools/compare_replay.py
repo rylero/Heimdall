@@ -140,9 +140,10 @@ TRACK_COLORS = [
 ]
 
 class Track:
-    Q    = 2.0   # process noise (m²/s²)
-    R    = 0.16  # measurement noise (m²)
-    GATE = 0.8   # base gate radius (m)
+    Q       = 2.0   # process noise (m²/s²)
+    R       = 0.16  # measurement noise (m²)
+    GATE    = 0.3   # base gate radius (m)
+    MAX_VEL = 3.0   # max credible speed (m/s) — clamp velocity on update
 
     def __init__(self, tid, x, y):
         self.id   = tid
@@ -164,6 +165,10 @@ class Track:
         innov_x = mx - self.x;  innov_y = my - self.y
         new_vx = innov_x / max(dt, 1e-3)
         new_vy = innov_y / max(dt, 1e-3)
+        spd = math.hypot(new_vx, new_vy)
+        if spd > Track.MAX_VEL:
+            new_vx *= Track.MAX_VEL / spd
+            new_vy *= Track.MAX_VEL / spd
         alpha = 0.25
         self.vx = (1 - alpha) * self.vx + alpha * new_vx
         self.vy = (1 - alpha) * self.vy + alpha * new_vy
