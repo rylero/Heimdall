@@ -21,7 +21,7 @@ std::string build_source_description(const CameraConfig& cfg) {
             if (cfg.hw_decode) {
                 ss << " ! nvv4l2decoder mjpeg=1" << vidconv;
             } else {
-                ss << " ! jpegdec" << vidconv;
+                ss << " ! jpegparse ! jpegdec" << vidconv;
             }
             break;
         case CameraType::CSI:
