@@ -14,7 +14,7 @@ std::string build_source_description(const CameraConfig& cfg) {
     switch (cfg.type) {
         case CameraType::USB:
             ss << "v4l2src device=" << cfg.device
-               << " io-mode=2"  // explicit MMAP
+               << " io-mode=1"  // RW: read() syscall, no MMAP/STREAMON/DMA — avoids tegra-xusb CMA pool exhaustion
                << " ! image/jpeg"
                << ",width="  << cfg.width
                << ",height=" << cfg.height
