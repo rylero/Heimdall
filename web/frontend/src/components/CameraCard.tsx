@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import Hls from 'hls.js'
 import './CameraCard.css'
 
 interface Props {
@@ -14,28 +15,30 @@ const LIVE_CONTROLS = [
   { key: 'contrast',             label: 'Contrast',   min: 0,   max: 95   },
 ]
 
-function VideoPreview({ device, name }: { device?: string; name: string }) {
-  // MediaMTX serves HLS at /name/index.m3u8 on port 8888
-  // For apriltag stream specifically
+function VideoPreview({ name }: { name: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
   const streamName = name === 'apriltag' ? 'apriltag' : 'ds-test'
   const hlsUrl = `http://${window.location.hostname}:8888/${streamName}/index.m3u8`
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el) return
+    if (Hls.isSupported()) {
+      const hls = new Hls({ lowLatencyMode: true })
+      hls.loadSource(hlsUrl)
+      hls.attachMedia(el)
+      return () => hls.destroy()
+    } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      el.src = hlsUrl
+    }
+  }, [hlsUrl])
 
   return (
     <div className="video-preview">
       <video
+        ref={videoRef}
         autoPlay muted playsInline
         style={{ width: '100%', borderRadius: 6, background: '#000', maxHeight: 200 }}
-        onError={e => { (e.target as HTMLVideoElement).style.display = 'none' }}
-        ref={el => {
-          if (!el) return
-          if ((window as any).Hls) {
-            const hls = new (window as any).Hls()
-            hls.loadSource(hlsUrl)
-            hls.attachMedia(el)
-          } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
-            el.src = hlsUrl
-          }
-        }}
       />
       <div className="video-label">{hlsUrl}</div>
     </div>
@@ -102,7 +105,7 @@ export default function CameraCard({ camera, onSaved }: Props) {
       {open && (
         <div className="camera-card-body">
           {/* Live preview */}
-          <VideoPreview device={draft.device} name={name} />
+          <VideoPreview name={name} />
 
           {/* Live V4L2 controls */}
           {!isApriltag && (
