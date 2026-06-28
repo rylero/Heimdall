@@ -1,73 +1,119 @@
 import os
-from pathlib import Path
+import glob
+import subprocess
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from ..database import get_db
-from ..models import CameraConfig
-
-_RTSP_HOST = os.getenv("RTSP_HOST", "")  # override if Jetson IP needed
-_RTSP_PORT = int(os.getenv("RTSP_PORT", "8554"))
+from app import config, jsonc
 
 router = APIRouter()
 
-_COLS = ("name", "device", "camera_type", "fx", "fy", "cx", "cy",
-         "tx", "ty", "tz", "yaw_deg", "pitch_deg", "roll_deg",
-         "exposure_us", "gain")
+
+def _list_camera_files() -> list[str]:
+    pattern = os.path.join(config.CAMERAS_DIR, "*.jsonc")
+    return sorted(glob.glob(pattern))
 
 
-@router.get("/", response_model=list[CameraConfig])
+def _read_camera(path: str) -> dict:
+    with open(path) as f:
+        return jsonc.loads(f.read())
+
+
+def _write_camera(path: str, data: dict):
+    with open(path, "w") as f:
+        f.write(jsonc.dumps(data))
+
+
+@router.get("")
 def list_cameras():
-    with get_db() as db:
-        rows = db.execute("SELECT * FROM cameras ORDER BY id").fetchall()
-        return [CameraConfig(**dict(r)) for r in rows]
+    result = []
+    for path in _list_camera_files():
+        name = os.path.splitext(os.path.basename(path))[0]
+        try:
+            data = _read_camera(path)
+            data["_name"] = name
+            result.append(data)
+        except Exception as e:
+            result.append({"_name": name, "_error": str(e)})
+    # Also include apriltag layout as a pseudo-camera
+    if os.path.exists(config.APRILTAG_CONFIG):
+        try:
+            data = jsonc.loads(open(config.APRILTAG_CONFIG).read())
+            data["_name"] = "apriltag"
+            data["_is_apriltag"] = True
+            result.append(data)
+        except Exception:
+            pass
+    return result
 
 
-@router.get("/available")
-def list_available_cameras():
-    """Scan /dev/video0..9 for present devices. Returns empty list on non-Linux."""
-    devices = []
-    for i in range(10):
-        p = Path(f"/dev/video{i}")
-        if p.exists():
-            devices.append({"index": i, "device": str(p), "name": f"USB Camera {i}"})
-    return devices
+@router.get("/{name}")
+def get_camera(name: str):
+    if name == "apriltag":
+        if not os.path.exists(config.APRILTAG_CONFIG):
+            raise HTTPException(404, "apriltag config not found")
+        data = jsonc.loads(open(config.APRILTAG_CONFIG).read())
+        data["_name"] = "apriltag"
+        data["_is_apriltag"] = True
+        return data
+    path = os.path.join(config.CAMERAS_DIR, f"{name}.jsonc")
+    if not os.path.exists(path):
+        raise HTTPException(404, f"Camera {name} not found")
+    return _read_camera(path)
 
 
-@router.post("/", response_model=CameraConfig, status_code=201)
-def create_camera(cam: CameraConfig):
-    with get_db() as db:
-        placeholders = ", ".join("?" * len(_COLS))
-        col_list = ", ".join(_COLS)
-        values = tuple(getattr(cam, c) for c in _COLS)
-        cur = db.execute(
-            f"INSERT INTO cameras ({col_list}) VALUES ({placeholders})", values
+@router.put("/{name}")
+def update_camera(name: str, body: dict):
+    body.pop("_name", None)
+    body.pop("_is_apriltag", None)
+    body.pop("_error", None)
+    if name == "apriltag":
+        _write_camera(config.APRILTAG_CONFIG, body)
+        return {"ok": True}
+    path = os.path.join(config.CAMERAS_DIR, f"{name}.jsonc")
+    if not os.path.exists(path):
+        raise HTTPException(404, f"Camera {name} not found")
+    _write_camera(path, body)
+    return {"ok": True}
+
+
+@router.get("/{name}/v4l2")
+def get_v4l2_controls(name: str):
+    """Read current v4l2 control values for a camera device."""
+    cam = get_camera(name)
+    device = cam.get("device")
+    if not device:
+        raise HTTPException(400, "Camera has no device path")
+    try:
+        result = subprocess.run(
+            ["v4l2-ctl", f"--device={device}", "--list-ctrls-menus"],
+            capture_output=True, text=True, timeout=5
         )
-        row = db.execute("SELECT * FROM cameras WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return CameraConfig(**dict(row))
+        return {"raw": result.stdout, "device": device}
+    except FileNotFoundError:
+        raise HTTPException(503, "v4l2-ctl not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
-@router.put("/{camera_id}", response_model=CameraConfig)
-def update_camera(camera_id: int, cam: CameraConfig):
-    with get_db() as db:
-        if not db.execute("SELECT 1 FROM cameras WHERE id = ?", (camera_id,)).fetchone():
-            raise HTTPException(404, f"Camera {camera_id} not found")
-        set_clause = ", ".join(f"{c} = ?" for c in _COLS)
-        values = tuple(getattr(cam, c) for c in _COLS) + (camera_id,)
-        db.execute(f"UPDATE cameras SET {set_clause} WHERE id = ?", values)
-        row = db.execute("SELECT * FROM cameras WHERE id = ?", (camera_id,)).fetchone()
-        return CameraConfig(**dict(row))
-
-
-@router.delete("/{camera_id}", status_code=204)
-def delete_camera(camera_id: int):
-    with get_db() as db:
-        db.execute("DELETE FROM cameras WHERE id = ?", (camera_id,))
-
-
-@router.get("/{camera_id}/stream")
-def stream_camera(camera_id: int, request_host: str = ""):
-    with get_db() as db:
-        if not db.execute("SELECT 1 FROM cameras WHERE id = ?", (camera_id,)).fetchone():
-            raise HTTPException(404, "Camera not found")
-    host = _RTSP_HOST or "JETSON_IP"
-    return JSONResponse({"rtsp_url": f"rtsp://{host}:{_RTSP_PORT}/stream"})
+@router.put("/{name}/v4l2")
+def set_v4l2_controls(name: str, controls: dict):
+    """Apply v4l2 controls live without restarting pipeline."""
+    cam = get_camera(name)
+    device = cam.get("device")
+    if not device:
+        raise HTTPException(400, "Camera has no device path")
+    ctrl_str = ",".join(f"{k}={v}" for k, v in controls.items())
+    try:
+        result = subprocess.run(
+            ["v4l2-ctl", f"--device={device}", f"--set-ctrl={ctrl_str}"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            raise HTTPException(400, result.stderr.strip())
+        return {"ok": True, "device": device, "controls": controls}
+    except FileNotFoundError:
+        raise HTTPException(503, "v4l2-ctl not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))

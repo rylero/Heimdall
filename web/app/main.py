@@ -1,26 +1,21 @@
-from contextlib import asynccontextmanager
-from pathlib import Path
+import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from .database import init_db
-from .routers import cameras, tracker, model_mgmt, thresholds, settings, detections
+from fastapi.responses import FileResponse
+from app.routers import cameras, settings, logs, control
 
+app = FastAPI(title="Heimdall Web")
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
+app.include_router(cameras.router, prefix="/api/cameras", tags=["cameras"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(logs.router, prefix="/api/logs", tags=["logs"])
+app.include_router(control.router, prefix="/api/control", tags=["control"])
 
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 
-app = FastAPI(title="Heimdall Config", version="1.0", lifespan=lifespan)
+if os.path.isdir(STATIC_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="assets")
 
-app.include_router(cameras.router,    prefix="/cameras",    tags=["cameras"])
-app.include_router(tracker.router,    prefix="/tracker",    tags=["tracker"])
-app.include_router(model_mgmt.router, prefix="/models",     tags=["models"])
-app.include_router(thresholds.router, prefix="/thresholds", tags=["thresholds"])
-app.include_router(settings.router,   prefix="/settings",   tags=["settings"])
-app.include_router(detections.router, prefix="/detections", tags=["detections"])
-
-_static = Path(__file__).parent / "static"
-if _static.exists():
-    app.mount("/", StaticFiles(directory=_static, html=True), name="static")
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))

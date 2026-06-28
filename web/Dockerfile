@@ -1,15 +1,23 @@
-FROM python:3.12-slim
+FROM node:20-slim AS frontend-build
+WORKDIR /build
+COPY frontend/package.json ./
+RUN npm install
+COPY frontend/ ./
+RUN npm run build
 
-RUN pip install uv
-
+FROM python:3.11-slim
 WORKDIR /app
 
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
+RUN apt-get update && apt-get install -y v4l-utils && rm -rf /var/lib/apt/lists/*
 
-COPY app/ app/
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir .
 
-RUN mkdir -p data models
+COPY app/ ./app/
+COPY --from=frontend-build /build/dist ./frontend/dist
 
-CMD ["uv", "run", "uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", "--port", "8080"]
+ENV HEIMDALL_CONFIG_DIR=/app/config
+ENV HEIMDALL_LOGS_DIR=/app/logs
+ENV HEIMDALL_CONTAINER=heimdall
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

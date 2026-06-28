@@ -1,0 +1,93 @@
+.camera-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.camera-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.camera-card-header:hover { background: rgba(255,255,255,0.03); }
+
+.camera-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chevron { color: var(--muted); font-size: 11px; }
+.cam-name { font-weight: 600; }
+.cam-device { color: var(--muted); font-size: 12px; font-family: monospace; }
+
+.camera-card-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.video-preview { margin-bottom: 14px; }
+.video-label { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: monospace; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.restart-badge {
+  font-size: 10px;
+  color: var(--yellow);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.live-controls { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+
+.ctrl-row label { margin-bottom: 2px; }
+.ctrl-slider-row { display: flex; align-items: center; gap: 10px; }
+.ctrl-value { min-width: 36px; text-align: right; font-family: monospace; font-size: 13px; color: var(--text); }
+
+.form-grid { display: flex; flex-direction: column; gap: 10px; }
+
+.form-field label { margin-bottom: 4px; }
+
+.form-field-row {
+  display: flex;
+  gap: 10px;
+}
+.form-field-row .form-field { flex: 1; }
+
+.checkboxes { align-items: center; gap: 16px; padding: 4px 0; }
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.intrinsics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.save-msg { color: var(--muted); font-size: 12px; flex: 1; }

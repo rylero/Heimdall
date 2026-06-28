@@ -19,6 +19,22 @@ services:
       - /usr/lib/aarch64-linux-gnu/libx264.so.163:/usr/lib/aarch64-linux-gnu/libx264.so.163:ro
     network_mode: host
 
+  heimdall-web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - HEIMDALL_CONFIG_DIR=/app/config
+      - HEIMDALL_LOGS_DIR=/app/logs
+      - HEIMDALL_CONTAINER=heimdall
+    volumes:
+      - ../config:/app/config
+      - ../logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    # http://[jetson-ip]:8080
+
   mediamtx:
     image: bluenviron/mediamtx:latest
     network_mode: host
