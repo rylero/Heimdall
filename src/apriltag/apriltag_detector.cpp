@@ -75,7 +75,7 @@ static constexpr uint64_t GYRO_STALE_NS     = 500'000'000ULL; // 500 ms
 // ---------------------------------------------------------------------------
 // V4L2 buffer count
 // ---------------------------------------------------------------------------
-static constexpr int V4L2_NUM_BUFS = 2;
+static constexpr int V4L2_NUM_BUFS = 1;
 
 // ---------------------------------------------------------------------------
 // Pimpl — V4L2 camera + constrained solver state
