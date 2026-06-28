@@ -97,10 +97,11 @@ struct AprilTagDetector::Impl {
     std::mutex             pose_mutex;
 
 #ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
-    GstElement* debug_pipeline_   = nullptr;
-    GstElement* debug_appsrc_     = nullptr;
-    uint64_t    debug_pts_ns_     = 0;
-    uint64_t    debug_frame_dur_ns_ = 0;
+    GstElement* debug_pipeline_      = nullptr;
+    GstElement* debug_appsrc_        = nullptr;
+    uint64_t    debug_pts_ns_        = 0;
+    uint64_t    debug_frame_dur_ns_  = 0;
+    bool        debug_pipeline_live_ = false;  // deferred until first detect() call
 #endif
     bool        debug_ok_         = false;
 
@@ -224,11 +225,11 @@ struct AprilTagDetector::Impl {
             gst_app_src_set_caps(GST_APP_SRC(debug_appsrc_), caps);
             gst_caps_unref(caps);
             g_object_set(debug_appsrc_, "max-bytes", (guint64)0, "block", FALSE, nullptr);
-            gst_element_set_state(debug_pipeline_, GST_STATE_PLAYING);
+            // Pipeline is built but NOT started here — started lazily on first detect()
+            // to avoid NvMap/CMA competition with the DeepStream pipeline at startup.
             debug_frame_dur_ns_ = c.fps > 0 ? (1'000'000'000ULL / (uint64_t)c.fps)
                                              : 33'333'333ULL;
             debug_ok_ = true;
-            std::printf("[apriltag] debug stream: rtsp://0.0.0.0:8554/live/apriltag\n");
         }
 #endif
     }
@@ -655,6 +656,11 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
 
 #ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
         {
+            if (!impl_->debug_pipeline_live_) {
+                gst_element_set_state(impl_->debug_pipeline_, GST_STATE_PLAYING);
+                impl_->debug_pipeline_live_ = true;
+                std::printf("[apriltag] debug stream: rtsp://0.0.0.0:8554/live/apriltag\n");
+            }
             const size_t sz = debug_frame.total() * debug_frame.elemSize();
             GstBuffer* gbuf = gst_buffer_new_allocate(nullptr, sz, nullptr);
             GstMapInfo map;
