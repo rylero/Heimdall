@@ -3,6 +3,8 @@
 #include <apriltag/tag36h11.h>
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -90,6 +92,9 @@ struct AprilTagDetector::Impl {
 
     std::deque<PoseSample> pose_history;
     std::mutex             pose_mutex;
+
+    cv::VideoWriter debug_writer_;
+    bool            debug_ok_ = false;
 
     Impl(AprilTagLayout lay) : layout(std::move(lay)) {
         auto& c = layout.camera;
@@ -185,6 +190,21 @@ struct AprilTagDetector::Impl {
 
         auto& r = layout.robot_to_camera;
         T_robot_cam = make_transform(r.x, r.y, r.z, r.roll, r.pitch, r.yaw);
+
+        // Debug RTSP stream: push annotated BGR frames into MediaMTX via RTMP.
+        std::string gst_pipe =
+            "appsrc ! videoconvert ! "
+            "x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 ! "
+            "flvmux streamable=true ! "
+            "rtmpsink location=rtmp://127.0.0.1:1935/live/apriltag";
+        debug_writer_.open(gst_pipe, cv::CAP_GSTREAMER, 0,
+                           c.fps > 0 ? c.fps : 30,
+                           cv::Size(c.width, c.height), true);
+        debug_ok_ = debug_writer_.isOpened();
+        if (debug_ok_)
+            std::printf("[apriltag] debug stream: rtsp://0.0.0.0:8554/live/apriltag\n");
+        else
+            std::fprintf(stderr, "[apriltag] debug stream failed to open (GStreamer/RTMP unavailable)\n");
     }
 
     ~Impl() {
@@ -252,7 +272,9 @@ struct AprilTagDetector::Impl {
         double yaw_rad,
         const std::vector<cv::Point2d>& img_pts,
         const std::vector<cv::Point3d>& obj_pts,
-        uint64_t capture_ns)
+        uint64_t capture_ns,
+        cv::Mat* out_rvec = nullptr,
+        cv::Mat* out_tvec = nullptr)
     {
         // Undistort image points to corrected pixel coords (same K, distortion removed)
         std::vector<cv::Point2d> pts_ud;
@@ -300,6 +322,9 @@ struct AprilTagDetector::Impl {
         const double rx = T_field_robot.at<double>(0, 3);
         const double ry = T_field_robot.at<double>(1, 3);
 
+        if (out_rvec) cv::Rodrigues(R_cam_tag, *out_rvec);
+        if (out_tvec) *out_tvec = t_solved.clone();
+
         // Use gyro yaw directly — it's what constructed R_cam_tag, so re-extracting from T is redundant
         return VisionPoseResult{rx, ry, yaw_rad, capture_ns};
     }
@@ -315,7 +340,9 @@ struct AprilTagDetector::Impl {
         const TagPose& tp,
         const std::vector<cv::Point2d>& img_pts,
         const std::vector<cv::Point3d>& obj_pts,
-        uint64_t capture_ns)
+        uint64_t capture_ns,
+        cv::Mat* out_rvec = nullptr,
+        cv::Mat* out_tvec = nullptr)
     {
         std::vector<cv::Mat> rvecs, tvecs;
         std::vector<double>  errors;
@@ -350,6 +377,9 @@ struct AprilTagDetector::Impl {
         double ry  = T_field_robot.at<double>(1, 3);
         double yaw = std::atan2(T_field_robot.at<double>(1, 0),
                                 T_field_robot.at<double>(0, 0));
+
+        if (out_rvec) *out_rvec = rvecs[sol];
+        if (out_tvec) *out_tvec = tvecs[sol];
 
         return VisionPoseResult{rx, ry, yaw, capture_ns};
     }
@@ -396,6 +426,14 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
     for (int i = 0; i < npix; ++i)
         impl_->graybuf[i] = yuyv[i * 2];
 
+    // Build debug frame from grayscale before returning the V4L2 buffer
+    cv::Mat debug_frame;
+    if (impl_->debug_ok_) {
+        cv::Mat gray(impl_->layout.camera.height, impl_->layout.camera.width,
+                     CV_8UC1, impl_->graybuf.data());
+        cv::cvtColor(gray, debug_frame, cv::COLOR_GRAY2BGR);
+    }
+
     // Return buffer to kernel before heavy compute
     ioctl(impl_->v4l2_fd, VIDIOC_QBUF, &buf);
 
@@ -420,6 +458,18 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
     // Interpolate yaw once per frame (shared across all detected tags this frame)
     auto yaw_opt = impl_->interpolate_yaw(capture_ns);
 
+    // Per-tag debug info collected for the overlay
+    struct TagDraw {
+        int id;
+        float margin;
+        cv::Point2f corners[4];
+        cv::Point2f center;
+        std::string method;  // "constrained" | "IPPE" | "failed" | "unknown"
+        bool        has_pose;
+        cv::Mat     rvec, tvec;
+    };
+    std::vector<TagDraw> tag_draws;
+
     // Select the highest-confidence detection among known tags
     std::optional<VisionPoseResult> best;
     float best_margin = -1.0f;
@@ -428,8 +478,20 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
         apriltag_detection_t* d;
         zarray_get(dets, i, &d);
 
+        TagDraw td;
+        td.id     = d->id;
+        td.margin = d->decision_margin;
+        for (int j = 0; j < 4; ++j)
+            td.corners[j] = {(float)d->p[j][0], (float)d->p[j][1]};
+        td.center  = {(float)d->c[0], (float)d->c[1]};
+        td.method  = "unknown";
+        td.has_pose = false;
+
         auto it = impl_->layout.tags.find(d->id);
-        if (it == impl_->layout.tags.end()) continue;
+        if (it == impl_->layout.tags.end()) {
+            tag_draws.push_back(std::move(td));
+            continue;
+        }
 
         std::vector<cv::Point2d> img_pts = {
             {d->p[0][0], d->p[0][1]},
@@ -441,19 +503,26 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
         std::optional<VisionPoseResult> result;
 
         if (yaw_opt.has_value()) {
-            result = impl_->constrained_pnp(it->second, *yaw_opt, img_pts, obj_pts, capture_ns);
+            result = impl_->constrained_pnp(it->second, *yaw_opt, img_pts, obj_pts, capture_ns,
+                                            &td.rvec, &td.tvec);
             if (result) {
+                td.method   = "constrained";
+                td.has_pose = true;
                 std::fprintf(stderr, "[apriltag] tag %d constrained solve ok (%.2f,%.2f) yaw=%.2f\n",
                              d->id, result->x, result->y, result->heading_rad);
             }
         }
 
         if (!result) {
-            // Constrained solve unavailable or failed — fall back to IPPE with floor constraint
-            result = impl_->ippe_pnp(it->second, img_pts, obj_pts, capture_ns);
+            result = impl_->ippe_pnp(it->second, img_pts, obj_pts, capture_ns,
+                                     &td.rvec, &td.tvec);
             if (result) {
+                td.method   = "IPPE";
+                td.has_pose = true;
                 std::fprintf(stderr, "[apriltag] tag %d IPPE fallback (%.2f,%.2f) yaw=%.2f\n",
                              d->id, result->x, result->y, result->heading_rad);
+            } else {
+                td.method = "failed";
             }
         }
 
@@ -461,8 +530,95 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
             best_margin = d->decision_margin;
             best = result;
         }
+        tag_draws.push_back(std::move(td));
     }
 
     apriltag_detections_destroy(dets);
+
+    // ── Debug overlay ────────────────────────────────────────────────────────
+    if (impl_->debug_ok_ && !debug_frame.empty()) {
+        const cv::Scalar COL_GREEN  {  0, 255,   0};
+        const cv::Scalar COL_YELLOW {  0, 255, 255};
+        const cv::Scalar COL_CYAN   {255, 255,   0};
+        const cv::Scalar COL_RED    {  0,   0, 255};
+        const cv::Scalar COL_WHITE  {255, 255, 255};
+        const cv::Scalar COL_ORANGE {  0, 165, 255};
+        const cv::Scalar COL_AXIS_X {  0,   0, 255};  // red
+        const cv::Scalar COL_AXIS_Y {  0, 255,   0};  // green
+        const cv::Scalar COL_AXIS_Z {255,   0,   0};  // blue
+
+        const std::vector<cv::Point3d> axis_3d = {
+            {0, 0, 0}, {hs, 0, 0}, {0, hs, 0}, {0, 0, hs}};
+
+        for (const auto& td : tag_draws) {
+            // Polygon around tag corners
+            const cv::Scalar poly_col = td.has_pose ? COL_GREEN : COL_ORANGE;
+            for (int j = 0; j < 4; ++j) {
+                cv::line(debug_frame,
+                         cv::Point(td.corners[j]),
+                         cv::Point(td.corners[(j + 1) % 4]),
+                         poly_col, 2);
+                // Number each corner
+                cv::putText(debug_frame, std::to_string(j),
+                            cv::Point(td.corners[j]) + cv::Point(4, -4),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.45, COL_YELLOW, 1);
+            }
+
+            // Center dot
+            cv::circle(debug_frame, cv::Point(td.center), 5, poly_col, -1);
+
+            // Tag ID + margin
+            std::string id_txt = "ID:" + std::to_string(td.id) +
+                                 " m=" + std::to_string((int)td.margin);
+            cv::putText(debug_frame, id_txt,
+                        cv::Point(td.center) + cv::Point(-40, -14),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.55, COL_CYAN, 1);
+
+            // Solve method
+            cv::putText(debug_frame, td.method,
+                        cv::Point(td.center) + cv::Point(-40, 20),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.45, COL_WHITE, 1);
+
+            // 3-axis transform arrow if we have rvec/tvec
+            if (td.has_pose && !td.rvec.empty() && !td.tvec.empty()) {
+                std::vector<cv::Point2d> axis_img;
+                cv::projectPoints(axis_3d, td.rvec, td.tvec,
+                                  impl_->cam_mat, impl_->dist, axis_img);
+                cv::Point org(axis_img[0]);
+                cv::arrowedLine(debug_frame, org, cv::Point(axis_img[1]), COL_AXIS_X, 2, 8, 0, 0.2);
+                cv::arrowedLine(debug_frame, org, cv::Point(axis_img[2]), COL_AXIS_Y, 2, 8, 0, 0.2);
+                cv::arrowedLine(debug_frame, org, cv::Point(axis_img[3]), COL_AXIS_Z, 2, 8, 0, 0.2);
+                cv::putText(debug_frame, "X", cv::Point(axis_img[1]) + cv::Point(3,-3),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.4, COL_AXIS_X, 1);
+                cv::putText(debug_frame, "Y", cv::Point(axis_img[2]) + cv::Point(3,-3),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.4, COL_AXIS_Y, 1);
+                cv::putText(debug_frame, "Z", cv::Point(axis_img[3]) + cv::Point(3,-3),
+                            cv::FONT_HERSHEY_SIMPLEX, 0.4, COL_AXIS_Z, 1);
+            }
+        }
+
+        // Header bar: pose result + gyro status
+        char hdr[128];
+        if (best) {
+            std::snprintf(hdr, sizeof(hdr), "POSE x=%.2f y=%.2f hdg=%.1fdeg  tags=%d",
+                          best->x, best->y,
+                          best->heading_rad * 180.0 / M_PI,
+                          (int)tag_draws.size());
+        } else {
+            std::snprintf(hdr, sizeof(hdr), "NO POSE  tags=%d",
+                          (int)tag_draws.size());
+        }
+        cv::putText(debug_frame, hdr, {10, 28},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.7,
+                    best ? COL_GREEN : COL_RED, 2);
+
+        const char* gyro_str = yaw_opt.has_value() ? "GYRO:FRESH" : "GYRO:STALE";
+        cv::putText(debug_frame, gyro_str, {10, 54},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                    yaw_opt.has_value() ? COL_GREEN : COL_ORANGE, 1);
+
+        impl_->debug_writer_.write(debug_frame);
+    }
+
     return best;
 }
