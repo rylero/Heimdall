@@ -4,7 +4,10 @@
 #include <opencv2/core.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/videoio.hpp>
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
+#include <gst/gst.h>
+#include <gst/app/gstappsrc.h>
+#endif
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -93,8 +96,13 @@ struct AprilTagDetector::Impl {
     std::deque<PoseSample> pose_history;
     std::mutex             pose_mutex;
 
-    cv::VideoWriter debug_writer_;
-    bool            debug_ok_ = false;
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
+    GstElement* debug_pipeline_   = nullptr;
+    GstElement* debug_appsrc_     = nullptr;
+    uint64_t    debug_pts_ns_     = 0;
+    uint64_t    debug_frame_dur_ns_ = 0;
+#endif
+    bool        debug_ok_         = false;
 
     Impl(AprilTagLayout lay) : layout(std::move(lay)) {
         auto& c = layout.camera;
@@ -191,20 +199,38 @@ struct AprilTagDetector::Impl {
         auto& r = layout.robot_to_camera;
         T_robot_cam = make_transform(r.x, r.y, r.z, r.roll, r.pitch, r.yaw);
 
-        // Debug RTSP stream: push annotated BGR frames into MediaMTX via RTMP.
-        std::string gst_pipe =
-            "appsrc ! videoconvert ! "
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
+        // Debug RTSP stream via GStreamer appsrc → x264enc → RTMP → MediaMTX.
+        gst_init(nullptr, nullptr);
+        GError* gst_err = nullptr;
+        std::string gst_desc =
+            "appsrc name=src format=time is-live=true do-timestamp=false ! "
+            "videoconvert ! "
             "x264enc tune=zerolatency speed-preset=ultrafast bitrate=2000 ! "
             "flvmux streamable=true ! "
             "rtmpsink location=rtmp://127.0.0.1:1935/live/apriltag";
-        debug_writer_.open(gst_pipe, cv::CAP_GSTREAMER, 0,
-                           c.fps > 0 ? c.fps : 30,
-                           cv::Size(c.width, c.height), true);
-        debug_ok_ = debug_writer_.isOpened();
-        if (debug_ok_)
+        debug_pipeline_ = gst_parse_launch(gst_desc.c_str(), &gst_err);
+        if (gst_err) {
+            std::fprintf(stderr, "[apriltag] debug pipeline error: %s\n", gst_err->message);
+            g_clear_error(&gst_err);
+        } else {
+            debug_appsrc_ = gst_bin_get_by_name(GST_BIN(debug_pipeline_), "src");
+            GstCaps* caps = gst_caps_new_simple("video/x-raw",
+                "format",    G_TYPE_STRING,       "BGR",
+                "width",     G_TYPE_INT,           c.width,
+                "height",    G_TYPE_INT,           c.height,
+                "framerate", GST_TYPE_FRACTION,    c.fps > 0 ? c.fps : 30, 1,
+                nullptr);
+            gst_app_src_set_caps(GST_APP_SRC(debug_appsrc_), caps);
+            gst_caps_unref(caps);
+            g_object_set(debug_appsrc_, "max-bytes", (guint64)0, "block", FALSE, nullptr);
+            gst_element_set_state(debug_pipeline_, GST_STATE_PLAYING);
+            debug_frame_dur_ns_ = c.fps > 0 ? (1'000'000'000ULL / (uint64_t)c.fps)
+                                             : 33'333'333ULL;
+            debug_ok_ = true;
             std::printf("[apriltag] debug stream: rtsp://0.0.0.0:8554/live/apriltag\n");
-        else
-            std::fprintf(stderr, "[apriltag] debug stream failed to open (GStreamer/RTMP unavailable)\n");
+        }
+#endif
     }
 
     ~Impl() {
@@ -217,6 +243,13 @@ struct AprilTagDetector::Impl {
                 if (buf_start[i]) munmap(buf_start[i], buf_length[i]);
             ::close(v4l2_fd);
         }
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
+        if (debug_pipeline_) {
+            gst_element_set_state(debug_pipeline_, GST_STATE_NULL);
+            gst_object_unref(debug_pipeline_);
+        }
+        if (debug_appsrc_) gst_object_unref(debug_appsrc_);
+#endif
     }
 
     // Interpolate (or extrapolate) gyro yaw to target_ns using the stored history.
@@ -428,11 +461,13 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
 
     // Build debug frame from grayscale before returning the V4L2 buffer
     cv::Mat debug_frame;
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
     if (impl_->debug_ok_) {
         cv::Mat gray(impl_->layout.camera.height, impl_->layout.camera.width,
                      CV_8UC1, impl_->graybuf.data());
         cv::cvtColor(gray, debug_frame, cv::COLOR_GRAY2BGR);
     }
+#endif
 
     // Return buffer to kernel before heavy compute
     ioctl(impl_->v4l2_fd, VIDIOC_QBUF, &buf);
@@ -536,6 +571,7 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
     apriltag_detections_destroy(dets);
 
     // ── Debug overlay ────────────────────────────────────────────────────────
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
     if (impl_->debug_ok_ && !debug_frame.empty()) {
         const cv::Scalar COL_GREEN  {  0, 255,   0};
         const cv::Scalar COL_YELLOW {  0, 255, 255};
@@ -617,8 +653,22 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
                     cv::FONT_HERSHEY_SIMPLEX, 0.55,
                     yaw_opt.has_value() ? COL_GREEN : COL_ORANGE, 1);
 
-        impl_->debug_writer_.write(debug_frame);
+#ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
+        {
+            const size_t sz = debug_frame.total() * debug_frame.elemSize();
+            GstBuffer* gbuf = gst_buffer_new_allocate(nullptr, sz, nullptr);
+            GstMapInfo map;
+            gst_buffer_map(gbuf, &map, GST_MAP_WRITE);
+            std::memcpy(map.data, debug_frame.data, sz);
+            gst_buffer_unmap(gbuf, &map);
+            GST_BUFFER_PTS(gbuf)      = impl_->debug_pts_ns_;
+            GST_BUFFER_DURATION(gbuf) = impl_->debug_frame_dur_ns_;
+            impl_->debug_pts_ns_ += impl_->debug_frame_dur_ns_;
+            gst_app_src_push_buffer(GST_APP_SRC(impl_->debug_appsrc_), gbuf);
+        }
+#endif
     }
+#endif  // HEIMDALL_APRILTAG_DEBUG_STREAM
 
     return best;
 }

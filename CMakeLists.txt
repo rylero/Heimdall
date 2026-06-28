@@ -151,6 +151,10 @@ find_package(OpenCV QUIET COMPONENTS core calib3d)
 find_library(APRILTAG_LIB apriltag)
 find_path(APRILTAG_INCLUDE apriltag.h PATH_SUFFIXES apriltag)
 
+if(PkgConfig_FOUND)
+    pkg_check_modules(GST_APP gstreamer-app-1.0)
+endif()
+
 if(OpenCV_FOUND AND APRILTAG_LIB AND APRILTAG_INCLUDE)
     add_library(heimdall_apriltag
         src/apriltag/tag_layout.cpp
@@ -163,8 +167,13 @@ if(OpenCV_FOUND AND APRILTAG_LIB AND APRILTAG_INCLUDE)
     )
     target_link_libraries(heimdall_apriltag
         PUBLIC nlohmann_json::nlohmann_json
-        PRIVATE ${APRILTAG_LIB} opencv_core opencv_calib3d opencv_imgproc opencv_videoio
+        PRIVATE ${APRILTAG_LIB} opencv_core opencv_calib3d opencv_imgproc
     )
+    if(GST_APP_FOUND)
+        target_include_directories(heimdall_apriltag PRIVATE ${GST_APP_INCLUDE_DIRS})
+        target_link_libraries(heimdall_apriltag PRIVATE ${GST_APP_LIBRARIES})
+        target_compile_definitions(heimdall_apriltag PRIVATE HEIMDALL_APRILTAG_DEBUG_STREAM)
+    endif()
     set(HEIMDALL_APRILTAG_AVAILABLE TRUE)
     message(STATUS "AprilTag detector: enabled (OpenCV ${OpenCV_VERSION}, apriltag ${APRILTAG_LIB})")
 else()
