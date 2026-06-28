@@ -161,10 +161,9 @@ if(OpenCV_FOUND AND APRILTAG_LIB AND APRILTAG_INCLUDE)
         ${APRILTAG_INCLUDE}
         ${OpenCV_INCLUDE_DIRS}
     )
-    # Link only core + calib3d — avoids opencv_videoio and its FFmpeg dep chain
     target_link_libraries(heimdall_apriltag
         PUBLIC nlohmann_json::nlohmann_json
-        PRIVATE ${APRILTAG_LIB} opencv_core opencv_calib3d
+        PRIVATE ${APRILTAG_LIB} opencv_core opencv_calib3d opencv_imgproc opencv_videoio
     )
     set(HEIMDALL_APRILTAG_AVAILABLE TRUE)
     message(STATUS "AprilTag detector: enabled (OpenCV ${OpenCV_VERSION}, apriltag ${APRILTAG_LIB})")
