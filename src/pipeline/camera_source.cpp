@@ -14,7 +14,7 @@ std::string build_source_description(const CameraConfig& cfg) {
     switch (cfg.type) {
         case CameraType::USB:
             ss << "v4l2src device=" << cfg.device
-               << " io-mode=1"  // RW mode: read() syscall, no MMAP/DMA buffers, no STREAMON
+               << " io-mode=2"  // explicit MMAP
                << " ! image/jpeg"
                << ",width="  << cfg.width
                << ",height=" << cfg.height
