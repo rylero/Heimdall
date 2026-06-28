@@ -2,6 +2,7 @@ package frc.robot;
 
 import static frc.robot.subsystems.vision.VisionConstants.*;
 
+import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -21,10 +22,6 @@ import frc.robot.subsystems.heimdall.Heimdall;
 import frc.robot.subsystems.heimdall.HeimdallIO;
 import frc.robot.subsystems.heimdall.HeimdallIOReal;
 import frc.robot.subsystems.heimdall.HeimdallIOSim;
-import frc.robot.subsystems.vision.Vision;
-import frc.robot.subsystems.vision.VisionIO;
-import frc.robot.subsystems.vision.VisionIOPhotonVision;
-import frc.robot.subsystems.vision.VisionIOPhotonVisionSim;
 import frc.robot.util.RobotIdentity;
 import org.ironmaple.simulation.SimulatedArena;
 import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
@@ -34,7 +31,6 @@ import org.littletonrobotics.junction.networktables.LoggedDashboardChooser;
 public class RobotContainer {
   // Subsystems
   private final Drive drive;
-  private final Vision vision;
   private final Heimdall heimdall;
 
   // Controller
@@ -62,13 +58,12 @@ public class RobotContainer {
                 new ModuleIOTalonFX(RobotIdentity.getTunerConstants().BackLeft),
                 new ModuleIOTalonFX(RobotIdentity.getTunerConstants().BackRight),
                 swerveDriveSimulation);
-        vision =
-            new Vision(
-                drive::addVisionMeasurement,
-                drive::getPose,
-                new VisionIOPhotonVision(camera0Name, robotToCamera0),
-                new VisionIOPhotonVision(camera1Name, robotToCamera1));
-        heimdall = new Heimdall(new HeimdallIOReal("10.62.38.200", drive::getPose));
+        heimdall =
+            new Heimdall(
+                new HeimdallIOReal("10.62.38.200", drive::getPose),
+                (pose, ts) ->
+                    drive.addVisionMeasurement(
+                        pose, ts, VecBuilder.fill(0.5, 0.5, Math.toRadians(10))));
         break;
 
       case SIM:
@@ -82,16 +77,6 @@ public class RobotContainer {
                 new ModuleIOSim(swerveDriveSimulation.getModules()[2]),
                 new ModuleIOSim(swerveDriveSimulation.getModules()[3]),
                 swerveDriveSimulation);
-        vision =
-            new Vision(
-                drive::addVisionMeasurement,
-                drive::getPose,
-                new VisionIOPhotonVisionSim(
-                    camera0Name, robotToCamera0, swerveDriveSimulation::getSimulatedDriveTrainPose),
-                new VisionIOPhotonVisionSim(
-                    camera1Name,
-                    robotToCamera1,
-                    swerveDriveSimulation::getSimulatedDriveTrainPose));
         // Dodge-obstacle trajectory: oscillates back and forth near the robot's start corner
         // so avoidance is exercised immediately. For the "Intercept Sim Ball" auto, swap back
         // to a single-sweep-and-park config instead, e.g. new HeimdallIOSim(0.1, 0.9, 0.5, 2.0,
@@ -108,7 +93,6 @@ public class RobotContainer {
                 new ModuleIO() {},
                 new ModuleIO() {},
                 swerveDriveSimulation);
-        vision = new Vision(drive::addVisionMeasurement, drive::getPose, new VisionIO() {});
         heimdall = new Heimdall(new HeimdallIO() {});
         break;
     }

@@ -5,6 +5,7 @@ import com.heimdall.HeimdallClient;
 import com.heimdall.TrackEvent;
 import com.heimdall.TrackEventType;
 import com.heimdall.TrackedObject;
+import com.heimdall.VisionPoseEstimate;
 import edu.wpi.first.math.geometry.Pose2d;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,6 +19,7 @@ public class HeimdallIOReal implements HeimdallIO {
   // Maintains a current snapshot keyed by trackId: CONFIRMED/UPDATED upsert, LOST removes.
   private final Map<Integer, TrackedObject> tracks = new LinkedHashMap<>();
   private long lastProcessedTimestampNs = -1;
+  private String lastError = "";
 
   public HeimdallIOReal(String jetsonHost, Supplier<Pose2d> poseSupplier) {
     this.client = new HeimdallClient(jetsonHost);
@@ -27,22 +29,41 @@ public class HeimdallIOReal implements HeimdallIO {
   @Override
   public void updateInputs(HeimdallIOInputs inputs) {
     Pose2d pose = poseSupplier.get();
-    client.sendPose(pose.getX(), pose.getY(), pose.getRotation().getRadians());
+    try {
+      client.sendPose(pose.getX(), pose.getY(), pose.getRotation().getRadians());
+    } catch (Exception e) {
+      lastError = "sendPose: " + e.getMessage();
+    }
 
-    DetectionFrame frame = client.getLatestFrame();
-    if (frame != null && frame.getTimestampNs() != lastProcessedTimestampNs) {
-      lastProcessedTimestampNs = frame.getTimestampNs();
-      for (TrackEvent event : frame.getEvents()) {
-        TrackedObject obj = event.getObject();
-        if (event.getType() == TrackEventType.LOST) {
-          tracks.remove(obj.getTrackId());
-        } else {
-          tracks.put(obj.getTrackId(), obj);
+    try {
+      DetectionFrame frame = client.getLatestFrame();
+      if (frame != null && frame.getTimestampNs() != lastProcessedTimestampNs) {
+        lastProcessedTimestampNs = frame.getTimestampNs();
+        for (TrackEvent event : frame.getEvents()) {
+          TrackedObject obj = event.getObject();
+          if (event.getType() == TrackEventType.LOST) {
+            tracks.remove(obj.getTrackId());
+          } else {
+            tracks.put(obj.getTrackId(), obj);
+          }
         }
       }
+    } catch (Exception e) {
+      lastError = "getLatestFrame: " + e.getMessage();
+    }
+
+    VisionPoseEstimate vpe = client.getLatestVisionPose();
+    inputs.aprilTagPoseValid = vpe != null;
+    if (vpe != null) {
+      inputs.aprilTagX = vpe.getX();
+      inputs.aprilTagY = vpe.getY();
+      inputs.aprilTagHeadingRad = vpe.getHeadingRad();
+      inputs.aprilTagTimestampSecs = vpe.getTimestampSecs();
     }
 
     inputs.connected = client.isHealthy();
+    inputs.timeSinceLastFrameSecs = client.getTimeSinceLastFrameSecs();
+    inputs.lastError = lastError;
     inputs.objects =
         tracks.values().stream()
             .map(

@@ -8,14 +8,21 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import org.littletonrobotics.junction.Logger;
 
 public class Heimdall extends SubsystemBase {
   private final HeimdallIO io;
   private final HeimdallIOInputsAutoLogged inputs = new HeimdallIOInputsAutoLogged();
+  private final BiConsumer<Pose2d, Double> visionMeasurementConsumer;
 
   public Heimdall(HeimdallIO io) {
+    this(io, null);
+  }
+
+  public Heimdall(HeimdallIO io, BiConsumer<Pose2d, Double> visionMeasurementConsumer) {
     this.io = io;
+    this.visionMeasurementConsumer = visionMeasurementConsumer;
   }
 
   @Override
@@ -28,6 +35,19 @@ public class Heimdall extends SubsystemBase {
         getTrackedObjects().stream()
             .map((obj) -> new Pose2d(obj.getX(), obj.getY(), Rotation2d.kZero))
             .toArray(Pose2d[]::new));
+
+    if (inputs.aprilTagPoseValid) {
+      Pose2d aprilTagPose =
+          new Pose2d(
+              inputs.aprilTagX,
+              inputs.aprilTagY,
+              Rotation2d.fromRadians(inputs.aprilTagHeadingRad));
+      Logger.recordOutput("Heimdall/AprilTagPose", aprilTagPose);
+      Logger.recordOutput("Heimdall/AprilTagTimestampSecs", inputs.aprilTagTimestampSecs);
+      if (visionMeasurementConsumer != null) {
+        visionMeasurementConsumer.accept(aprilTagPose, inputs.aprilTagTimestampSecs);
+      }
+    }
   }
 
   public boolean isConnected() {
