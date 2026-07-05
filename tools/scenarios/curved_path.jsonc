@@ -1,0 +1,46 @@
+{
+  // Richer scene: the robot follows a curved waypoint path (turning as it goes)
+  // through a denser field of static and moving fuel. Exercises the pose
+  // projection under changing robot heading, which the linear scene never does.
+  "name": "curved_path",
+
+  "duration": 12.0,
+  "fps":      30.0,
+  "pose_hz":  50.0,
+  "noise":    5.0,
+  "conf":     0.85,
+  "seed":     7,
+
+  // Waypoints: piecewise-linear interpolation in (x, y, heading) over time.
+  // Robot arcs from the origin toward +X/+Y while rotating ~45 degrees.
+  "robot": {
+    "type": "waypoints",
+    "waypoints": [
+      { "t": 0.0,  "x": 0.0, "y": 0.0, "heading": 0.0 },
+      { "t": 4.0,  "x": 1.6, "y": 0.2, "heading": 0.20 },
+      { "t": 8.0,  "x": 3.0, "y": 0.9, "heading": 0.50 },
+      { "t": 12.0, "x": 4.2, "y": 2.0, "heading": 0.78 }
+    ]
+  },
+
+  "objects": [
+    { "class_id": 0, "x": 1.2, "y": 0.4 },
+    { "class_id": 1, "x": 1.8, "y": 0.0 },
+    { "class_id": 0, "x": 2.4, "y": 0.9 },
+    { "class_id": 2, "x": 3.0, "y": 1.3 },
+    { "class_id": 1, "x": 3.6, "y": 1.7 },
+
+    // Moving pieces sweeping across the arc.
+    { "class_id": 0, "x": 2.0, "y": -0.5, "vx": 0.0,  "vy": 0.30 },
+    { "class_id": 2, "x": 1.0, "y": 0.2,  "vx": 0.28, "vy": 0.10 },
+
+    // Tight pair to stress data association mid-turn.
+    { "class_id": 1, "x": 2.7, "y": 0.55 },
+    { "class_id": 1, "x": 2.9, "y": 0.35 }
+  ],
+
+  "apriltags": [
+    { "id": 1, "x": 5.0, "y": 2.5, "z": 0.5, "yaw": 3.14159 },
+    { "id": 2, "x": 5.0, "y": 0.0, "z": 0.5, "yaw": 3.14159 }
+  ]
+}

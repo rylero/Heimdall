@@ -1,0 +1,10 @@
+# Generated simulation artifacts (from tools/sim_recording.py, sim_eval.py, replay).
+# The two committed sample files below are kept as references.
+*_recording.jsonl
+*_ground_truth.jsonl
+*_replay_out.jsonl
+*_out.jsonl
+*_metrics.json
+
+!sim_recording.jsonl
+!sim_ground_truth.jsonl
