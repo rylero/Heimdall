@@ -30,6 +30,12 @@ struct AprilTagLayout {
     AprilTagCameraParams               camera;
     RobotToCameraTransform             robot_to_camera;
     std::unordered_map<int, TagPose>   tags;
+
+    // When true, always use the unconstrained IPPE_SQUARE solver — never the
+    // gyro/odometry-constrained solve. Use this if the robot's heading feed
+    // isn't trustworthy enough to seed the constrained solve (e.g. no yaw
+    // calibration source, or debugging pose accuracy independent of odometry).
+    bool                               force_unconstrained_solver = false;
 };
 
 // Throws std::runtime_error if the file is missing or malformed.

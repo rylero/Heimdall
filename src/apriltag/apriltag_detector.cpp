@@ -49,6 +49,12 @@ static cv::Mat make_transform(double tx, double ty, double tz,
     return T;
 }
 
+static double wrap_angle(double a) {
+    while (a > M_PI)  a -= 2.0 * M_PI;
+    while (a < -M_PI) a += 2.0 * M_PI;
+    return a;
+}
+
 static cv::Mat invert_transform(const cv::Mat& T) {
     cv::Mat R     = T(cv::Rect(0,0,3,3)).t();
     cv::Mat t     = T(cv::Rect(3,0,1,3));
@@ -95,6 +101,38 @@ struct AprilTagDetector::Impl {
 
     std::deque<PoseSample> pose_history;
     std::mutex             pose_mutex;
+
+    // Self-calibrated odometry->field yaw offset (radians). Lets the constrained
+    // solve work without depending on a precise robot lineup or manual heading
+    // zero: it's derived from agreement between low-ambiguity IPPE solves and
+    // the fed-in odometry yaw, not assumed correct from t=0.
+    double yaw_offset_      = 0.0;
+    bool   yaw_calibrated_  = false;
+    double calib_candidate_ = 0.0;
+    int    calib_streak_    = 0;
+
+    static constexpr double CALIB_AMBIGUITY_MAX   = 0.1;   // stricter than the 0.25 IPPE-fallback cutoff
+    static constexpr double CALIB_CONSISTENCY_RAD = 0.05;  // ~3 deg between consecutive candidates
+    static constexpr int    CALIB_STREAK_REQUIRED = 3;
+
+    // Called on each confident (low-ambiguity) IPPE solve. Locks/re-locks
+    // yaw_offset_ once CALIB_STREAK_REQUIRED consecutive candidates agree,
+    // so a single bad disambiguation can't corrupt calibration, and slow
+    // odometry drift over a match still gets corrected.
+    void update_yaw_calibration(double raw_odometry_yaw, double vision_yaw) {
+        double candidate = wrap_angle(vision_yaw - raw_odometry_yaw);
+        if (calib_streak_ > 0 &&
+            std::abs(wrap_angle(candidate - calib_candidate_)) < CALIB_CONSISTENCY_RAD) {
+            ++calib_streak_;
+        } else {
+            calib_streak_ = 1;
+        }
+        calib_candidate_ = candidate;
+        if (calib_streak_ >= CALIB_STREAK_REQUIRED) {
+            yaw_offset_     = candidate;
+            yaw_calibrated_ = true;
+        }
+    }
 
 #ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
     GstElement* debug_pipeline_      = nullptr;
@@ -376,7 +414,8 @@ struct AprilTagDetector::Impl {
         const std::vector<cv::Point3d>& obj_pts,
         uint64_t capture_ns,
         cv::Mat* out_rvec = nullptr,
-        cv::Mat* out_tvec = nullptr)
+        cv::Mat* out_tvec = nullptr,
+        double*  out_ambiguity = nullptr)
     {
         std::vector<cv::Mat> rvecs, tvecs;
         std::vector<double>  errors;
@@ -387,6 +426,7 @@ struct AprilTagDetector::Impl {
         if (n < 1) return std::nullopt;
 
         double ambiguity = (n >= 2 && errors[1] > 1e-6) ? (errors[0] / errors[1]) : 0.0;
+        if (out_ambiguity) *out_ambiguity = ambiguity;
         if (ambiguity > 0.25) return std::nullopt;
 
         cv::Mat T_field_tag = make_transform(tp.x, tp.y, tp.z, tp.roll, tp.pitch, tp.yaw);
@@ -537,9 +577,13 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
         };
 
         std::optional<VisionPoseResult> result;
+        const bool try_constrained = !impl_->layout.force_unconstrained_solver
+                                   && impl_->yaw_calibrated_
+                                   && yaw_opt.has_value();
 
-        if (yaw_opt.has_value()) {
-            result = impl_->constrained_pnp(it->second, *yaw_opt, img_pts, obj_pts, capture_ns,
+        if (try_constrained) {
+            double corrected_yaw = wrap_angle(*yaw_opt + impl_->yaw_offset_);
+            result = impl_->constrained_pnp(it->second, corrected_yaw, img_pts, obj_pts, capture_ns,
                                             &td.rvec, &td.tvec);
             if (result) {
                 td.method   = "constrained";
@@ -550,13 +594,22 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
         }
 
         if (!result) {
+            double ambiguity = 0.0;
             result = impl_->ippe_pnp(it->second, img_pts, obj_pts, capture_ns,
-                                     &td.rvec, &td.tvec);
+                                     &td.rvec, &td.tvec, &ambiguity);
             if (result) {
-                td.method   = "IPPE";
+                td.method   = impl_->layout.force_unconstrained_solver ? "IPPE(forced)" : "IPPE";
                 td.has_pose = true;
-                std::fprintf(stderr, "[apriltag] tag %d IPPE fallback (%.2f,%.2f) yaw=%.2f\n",
-                             d->id, result->x, result->y, result->heading_rad);
+                std::fprintf(stderr, "[apriltag] tag %d IPPE (%.2f,%.2f) yaw=%.2f amb=%.3f\n",
+                             d->id, result->x, result->y, result->heading_rad, ambiguity);
+
+                // Feed a confident solve into yaw self-calibration. Skipped in
+                // forced-unconstrained mode — there's no constrained solve to calibrate for.
+                if (!impl_->layout.force_unconstrained_solver
+                    && yaw_opt.has_value()
+                    && ambiguity < Impl::CALIB_AMBIGUITY_MAX) {
+                    impl_->update_yaw_calibration(*yaw_opt, result->heading_rad);
+                }
             } else {
                 td.method = "failed";
             }
@@ -653,6 +706,13 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
         cv::putText(debug_frame, gyro_str, {10, 54},
                     cv::FONT_HERSHEY_SIMPLEX, 0.55,
                     yaw_opt.has_value() ? COL_GREEN : COL_ORANGE, 1);
+
+        const char* calib_str = impl_->layout.force_unconstrained_solver ? "YAW:FORCED-IPPE"
+                               : impl_->yaw_calibrated_                   ? "YAW:CAL"
+                                                                           : "YAW:UNCAL";
+        cv::putText(debug_frame, calib_str, {10, 78},
+                    cv::FONT_HERSHEY_SIMPLEX, 0.55,
+                    impl_->yaw_calibrated_ ? COL_GREEN : COL_ORANGE, 1);
 
 #ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
         {

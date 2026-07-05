@@ -3,6 +3,12 @@
   // 2025 FRC official: 0.1651 m (6.5 in).  Measure your actual printed tags.
   "tag_size_meters": 0.1651,
 
+  // When true, always use the unconstrained IPPE_SQUARE solver instead of the
+  // gyro/odometry-constrained solve, even after yaw self-calibration locks in.
+  // Use this to debug pose accuracy independent of the robot's heading feed,
+  // or if that feed is not trustworthy enough to seed the constrained solve.
+  "force_unconstrained_solver": false,
+
   // ── AprilTag camera ──────────────────────────────────────────────────────
   // This is a SEPARATE USB camera from the two object-detection cameras.
   // It must be forward/wall-facing so it can see AprilTags.

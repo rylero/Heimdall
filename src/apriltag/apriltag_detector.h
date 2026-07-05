@@ -19,8 +19,15 @@ public:
     void update_gyro(double yaw, double vyaw, uint64_t timestamp_ns);
 
     // Capture one frame, detect tags, solve pose.
-    // Uses constrained linear solve (rotation from gyro) when gyro stream is fresh;
-    // falls back to IPPE_SQUARE + floor-constraint disambiguation otherwise.
+    //
+    // The odometry/gyro yaw fed via update_gyro() is not trusted as an absolute
+    // field heading until self-calibrated: until then, every solve uses the
+    // unconstrained IPPE_SQUARE solver (+ floor-constraint disambiguation). Once
+    // a run of consistent low-ambiguity IPPE solves agrees on an odometry->field
+    // yaw offset, the fast gyro-constrained linear solve takes over, corrected
+    // by that offset — so accuracy no longer depends on a precise robot lineup
+    // or manual heading zero before the match. Set force_unconstrained_solver in
+    // AprilTagLayout to always use IPPE and skip the constrained solve entirely.
     std::optional<VisionPoseResult> detect();
 
     bool is_open() const;

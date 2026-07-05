@@ -12,7 +12,8 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     nlohmann::json j = nlohmann::json::parse(f, nullptr, /*exceptions=*/true, /*ignore_comments=*/true);
 
     AprilTagLayout layout;
-    layout.tag_size_meters = j.value("tag_size_meters", 0.1651);
+    layout.tag_size_meters         = j.value("tag_size_meters", 0.1651);
+    layout.force_unconstrained_solver = j.value("force_unconstrained_solver", false);
 
     // Load AprilTag Camera Parameters
     auto& cam = layout.camera;
