@@ -17,7 +17,6 @@ future renderers and metrics can consume the same scenario file.
 import json
 import os
 import random
-import time
 
 from . import projection
 
@@ -32,6 +31,11 @@ DEFAULTS = {
     'noise':    5.0,    # pixel noise std-dev
     'conf':     0.85,   # base detection confidence
     'seed':     42,
+    # Fixed timestamp base (ns) so runs are BITWISE reproducible. Wall-clock
+    # time here would make absolute ts differ between runs, perturbing Kalman dt
+    # at float64 precision and breaking determinism. Override only if you need a
+    # realistic epoch; relative timing (the only thing replay uses) is unaffected.
+    'base_ns':  1_700_000_000_000_000_000,
 }
 
 
@@ -154,7 +158,7 @@ def generate(scenario, cameras, out_prefix, overrides=None):
     pose_dt_ns  = int(1e9 / pose_hz)
     frame_dt_ns = int(1e9 / fps)
     total_ns    = int(duration * 1e9)
-    base_ns     = int(time.time() * 1e9)
+    base_ns     = int(param('base_ns'))
 
     events = []  # (t_ns, 'pose'|'frame', payload)
 
