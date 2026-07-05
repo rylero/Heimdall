@@ -32,11 +32,14 @@ import sim_eval  # reuse runner selection  # noqa: E402
 # accurate regime (0.6-0.8 m ahead, positive-y side), zero pixel noise. This
 # isolates systematic camera-model error from tracker noise and range effects.
 #
-# NOTE on tolerance: projection.field_to_pixel deliberately omits inv_fudge, so
-# the sim carries a *documented* systematic offset vs ground truth (~0.14 m in
-# this regime; larger at range and on the -y side). The guardrail bounds that
-# offset tightly enough to catch real drift (a broken rotation/sign flip yields
-# metres of error or zero detections) while tolerating the known ~0.14 m.
+# The test runs with --bypass-tracker so the pipeline output is the RAW pose
+# projection (no JPDAF/Kalman smoothing, no confirmation lag). Because the sim's
+# field->pixel forward model (including Brown-Conrady distortion) is the exact
+# inverse of the C++ pose_estimator's pixel->field back-projection, the recovered
+# position is bitwise-identical to ground truth (~0 mm). The tolerance is
+# therefore tight: any real drift (a rotation/sign flip, a distortion mismatch,
+# a bottom-center convention change) breaks the round-trip and shows up as cm-to-
+# metre error or zero detections, all far above TOL_MAX_M.
 SCENARIO = {
     'name': 'model_sync',
     'duration': 4.0, 'fps': 30.0, 'pose_hz': 50.0,
@@ -50,8 +53,10 @@ SCENARIO = {
     'apriltags': [],
 }
 
-TOL_MEAN_M = 0.22
-TOL_MAX_M = 0.30
+# Projection-only (bypass tracker) round-trips to <1 cm; leave headroom for FP
+# rounding across the JSON boundary. A broken model overshoots this by 10-100x.
+TOL_MEAN_M = 0.01
+TOL_MAX_M = 0.02
 
 
 def main():
@@ -80,10 +85,11 @@ def main():
     stats = scene.generate(SCENARIO, cameras, os.path.join(REPO, prefix))
     out = os.path.join(REPO, prefix + '_out.jsonl')
 
+    # Bypass the tracker: we are validating the projection model, not JPDAF.
     if runner == 'local':
-        rc = sim_eval.run_local(local, stats['recording'], args.cameras, out, False)
+        rc = sim_eval.run_local(local, stats['recording'], args.cameras, out, True)
     else:
-        rc = sim_eval.run_docker(stats['recording'], args.cameras, out, False)
+        rc = sim_eval.run_docker(stats['recording'], args.cameras, out, True)
     if rc != 0:
         print(f"FAIL: heimdall_replay ({runner}) exited {rc}")
         return 1

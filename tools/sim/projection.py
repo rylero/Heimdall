@@ -4,7 +4,8 @@ projection.py -- the single source of truth for the sim camera model.
 This module is the ONLY place the Python side models the camera geometry. It
 mirrors the C++ pipeline exactly:
   - rotation_from_euler()  matches rotation_from_euler() in camera_params.h
-  - the fudge factor        matches pose_estimator.cpp (kA, kB, kC)
+  - distort()               is the exact forward of pose_estimator.cpp's iterative
+                            Brown-Conrady undistortion (k1,k2,p1,p2,k3)
   - field_to_pixel()        uses the bottom-center ground-contact convention
                             that pose_estimator.cpp reads back (left+w/2, top+h)
 
@@ -73,6 +74,7 @@ def make_sim_cameras():
             'id':           i,
             'width':        640, 'height': 480,
             'fx': 600.0, 'fy': 600.0, 'cx': 320.0, 'cy': 240.0,
+            'k1': 0.0, 'k2': 0.0, 'p1': 0.0, 'p2': 0.0, 'k3': 0.0,  # ideal pinhole
             'tx': tx, 'ty': ty, 'tz': 0.30,
             'R_rob_to_cam': mat3_transpose(R),
         })
@@ -110,11 +112,18 @@ def load_cameras(cam_dir):
         if cfg.get('flip_v', False):
             cy = h - 1.0 - cy
 
+        # Brown-Conrady distortion coefficients (the C++ pose_estimator undistorts
+        # with these, so the sim must forward-distort with them for the round-trip
+        # to close). Absent -> zero (ideal pinhole).
+        dist = intr.get('distortion', {})
         R = rotation_from_euler(float(extr['yaw']), float(extr['pitch']), float(extr['roll']))
         cameras.append({
             'id': cfg['id'],
             'width': w, 'height': h,
             'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy,
+            'k1': float(dist.get('k1', 0.0)), 'k2': float(dist.get('k2', 0.0)),
+            'p1': float(dist.get('p1', 0.0)), 'p2': float(dist.get('p2', 0.0)),
+            'k3': float(dist.get('k3', 0.0)),
             'tx': float(extr['tx']), 'ty': float(extr['ty']), 'tz': float(extr['tz']),
             'R_rob_to_cam': mat3_transpose(R),  # R^T = robot-to-camera
         })
@@ -129,36 +138,23 @@ def load_cameras_or_sim(cam_dir):
     return cameras, False
 
 
-# ── Fudge factor (mirrors pose_estimator.cpp) ────────────────────────────────
-# pose_estimator applies: corrected_pos = raw_pos * (corrected_d / raw_d)
-# where corrected_d = max(0, kA*raw_d^2 + kB*raw_d + kC).
-_kA, _kB, _kC = -0.0658, 0.9637, 0.12
+# ── Lens distortion (forward Brown-Conrady) ──────────────────────────────────
+# This is the exact inverse of the undistortion iteration in pose_estimator.cpp:
+#   xd = u*rad + 2*p1*u*v + p2*(r2 + 2u^2)
+#   yd = v*rad + p1*(r2 + 2v^2) + 2*p2*u*v,   rad = 1 + k1 r2 + k2 r4 + k3 r6
+# The sim projects field->pixel, so it must forward-distort; the C++ then
+# undistorts, and the round-trip closes. Without this the C++ removes distortion
+# that was never added, which is the source of the systematic pose offset.
 
-def apply_fudge(fx, fy):
-    """Forward fudge: same transform as pose_estimator.cpp."""
-    raw_d = math.hypot(fx, fy)
-    if raw_d < 0.01:
-        return fx, fy
-    corr_d = max(0.0, (_kA * raw_d + _kB) * raw_d + _kC)
-    s = corr_d / raw_d
-    return fx * s, fy * s
-
-def inv_fudge(gx, gy):
-    """Inverse fudge: find raw position such that apply_fudge(raw) = (gx, gy)."""
-    d_gt = math.hypot(gx, gy)
-    if d_gt < 0.01:
-        return gx, gy
-    disc = _kB * _kB - 4 * _kA * (_kC - d_gt)
-    if disc < 0:
-        return gx, gy
-    sq = math.sqrt(disc)
-    r1 = (-_kB + sq) / (2 * _kA)
-    r2 = (-_kB - sq) / (2 * _kA)
-    raw_d = r2 if r2 > 0 and (r1 <= 0 or abs(r2 - d_gt) < abs(r1 - d_gt)) else r1
-    if raw_d <= 0:
-        return gx, gy
-    s = raw_d / d_gt
-    return gx * s, gy * s
+def distort(cam, u, v):
+    """Apply forward Brown-Conrady distortion to normalised coords (u, v)."""
+    k1, k2, k3 = cam['k1'], cam['k2'], cam['k3']
+    p1, p2 = cam['p1'], cam['p2']
+    r2 = u*u + v*v
+    rad = 1.0 + k1*r2 + k2*r2*r2 + k3*r2*r2*r2
+    xd = u*rad + 2.0*p1*u*v + p2*(r2 + 2.0*u*u)
+    yd = v*rad + p1*(r2 + 2.0*v*v) + 2.0*p2*u*v
+    return xd, yd
 
 
 # ── Projection: field point -> pixel bbox ─────────────────────────────────────
@@ -168,10 +164,8 @@ def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radiu
     Projects a field-space circle through the camera model -> pixel bbox.
     Returns (left, top, width, height) or None if not visible.
 
-    NOTE: We do NOT apply inv_fudge here. The C++ fudge is calibrated at close
-    range from field origin, so applying it to objects far down the field pushes
-    their pre-compensated positions outside the camera's reachable FOV. Accept a
-    small systematic offset vs ground truth instead.
+    Applies forward lens distortion so the round-trip through the C++
+    pose_estimator (which undistorts) recovers the true field point.
     """
     # Field -> robot frame  (R(-heading) * delta)
     cos_h = math.cos(robot_heading);  sin_h = math.sin(robot_heading)
@@ -191,8 +185,10 @@ def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radiu
         return None
 
     fx, fy, cx, cy = cam['fx'], cam['fy'], cam['cx'], cam['cy']
-    u = fx * (d_cam[0] / d_cam[2]) + cx
-    v = fy * (d_cam[1] / d_cam[2]) + cy
+    # Normalised undistorted coords -> distorted -> pixels (matches C++ inverse).
+    xd, yd = distort(cam, d_cam[0] / d_cam[2], d_cam[1] / d_cam[2])
+    u = fx * xd + cx
+    v = fy * yd + cy
 
     # Pixel radius from angular subtense of object radius.
     # pose_estimator.cpp reads ground contact as (left+w/2, top+h) -- the BOTTOM-CENTER.

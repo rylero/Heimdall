@@ -42,16 +42,26 @@ rotation_from_euler = projection.rotation_from_euler
 camera_sees_floor  = projection.camera_sees_floor
 make_sim_cameras   = projection.make_sim_cameras
 load_cameras       = projection.load_cameras
-apply_fudge        = projection.apply_fudge
 
 
 # ── Projection: pixel -> field (mirrors pose_estimator.cpp) ──────────────────
 # Inverse of projection.field_to_pixel; used only by this visualizer.
 
 def pixel_to_field(cam, px, py, robot_x, robot_y, robot_heading):
-    """Unproject pixel to field ground plane, including fudge factor. Returns (fx, fy) or None."""
-    u = (px - cam['cx']) / cam['fx']
-    v = (py - cam['cy']) / cam['fy']
+    """Unproject pixel to field ground plane. Returns (fx, fy) or None.
+
+    Iteratively undistorts (Brown-Conrady) like pose_estimator.cpp so it inverts
+    projection.field_to_pixel's forward distortion."""
+    xd = (px - cam['cx']) / cam['fx']
+    yd = (py - cam['cy']) / cam['fy']
+    k1, k2, k3 = cam.get('k1', 0.0), cam.get('k2', 0.0), cam.get('k3', 0.0)
+    p1, p2 = cam.get('p1', 0.0), cam.get('p2', 0.0)
+    u, v = xd, yd
+    for _ in range(5):
+        r2 = u*u + v*v
+        rad = 1.0 + k1*r2 + k2*r2*r2 + k3*r2*r2*r2
+        u = (xd - 2.0*p1*u*v - p2*(r2 + 2.0*u*u)) / rad
+        v = (yd - p1*(r2 + 2.0*v*v) - 2.0*p2*u*v) / rad
 
     R_cam_rob = mat3T(cam['R_rob_to_cam'])
     d_rob = mv(R_cam_rob, (u, v, 1.0))
