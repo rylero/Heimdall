@@ -86,3 +86,8 @@ docker buildx build --platform linux/arm64 --push \
 # on Jetson:
 docker pull ghcr.io/<your-org>/heimdall:latest
 ```
+
+The Jetson wifi fixer:
+```bash
+sudo nmcli connection down dhcp-enP8p1s0 && sudo nmcli connection up dhcp-enP8p1s0
+sudo nmcli connection down smackdown && sudo nmcli connection up smackdown```
