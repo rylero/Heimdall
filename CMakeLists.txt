@@ -253,6 +253,7 @@ add_library(heimdall_core
     src/app/detection_processor.cpp
     src/app/output_jsonl.cpp
     src/app/recording.cpp
+    src/app/snapshot.cpp
     src/config/camera_config_loader.cpp
 )
 target_include_directories(heimdall_core PUBLIC

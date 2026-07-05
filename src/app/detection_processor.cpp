@@ -1,4 +1,5 @@
 #include "app/detection_processor.h"
+#include "app/snapshot.h"
 #include <cstdio>
 
 DetectionProcessor::DetectionProcessor(Config config, DetectionOutput& output)
@@ -25,8 +26,16 @@ void DetectionProcessor::push_pose(const CommLayer::TimestampedPose& p) {
 }
 
 void DetectionProcessor::process(const std::vector<Detection>& dets) {
+    const bool take_snapshot = snapshot_requested_.exchange(false, std::memory_order_relaxed);
+
     if (dets.empty()) {
         output_.send_tracking_frame({}, last_timestamp_ns_, /*healthy=*/true);
+        if (take_snapshot) {
+            snapshot::Frame snap;
+            snap.frame_ts_ns = last_timestamp_ns_;
+            snap.healthy     = true;
+            snapshot::write(config_.snapshot_dir, snap);  // empty inputs — nothing detected this frame
+        }
         return;
     }
 
@@ -52,6 +61,8 @@ void DetectionProcessor::process(const std::vector<Detection>& dets) {
                 TrackedObject{.track_id=static_cast<uint32_t>(i), .class_id=fd.class_id,
                               .x=fd.x, .y=fd.y, .confidence=fd.confidence}});
         }
+        if (take_snapshot)
+            write_snapshot(timestamp_ns, capture_ns, pose, dets, field_dets, events);
         output_.send_tracking_frame(events, timestamp_ns, /*healthy=*/true);
         return;
     }
@@ -78,5 +89,24 @@ void DetectionProcessor::process(const std::vector<Detection>& dets) {
         }
     }
 
+    if (take_snapshot)
+        write_snapshot(timestamp_ns, capture_ns, pose, dets, field_dets, events);
+
     output_.send_tracking_frame(events, timestamp_ns, /*healthy=*/true);
+}
+
+void DetectionProcessor::write_snapshot(uint64_t timestamp_ns, uint64_t capture_ns,
+                                        const RobotPose& pose,
+                                        const std::vector<Detection>& dets,
+                                        const std::vector<FieldDetection>& field_dets,
+                                        const std::vector<TrackEvent>& events) {
+    snapshot::Frame snap;
+    snap.frame_ts_ns          = timestamp_ns;
+    snap.capture_monotonic_ns = capture_ns;
+    snap.robot_pose           = pose;
+    snap.detections           = dets;
+    snap.field_detections     = field_dets;
+    snap.events               = events;
+    snap.healthy              = true;
+    snapshot::write(config_.snapshot_dir, snap);
 }

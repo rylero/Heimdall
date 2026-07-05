@@ -37,6 +37,9 @@ public:
     void run();
     void stop();
 
+    // Trigger a one-shot debug snapshot of the next processed frame (inputs+outputs → JSON).
+    void request_snapshot() { processor_.request_snapshot(); }
+
 private:
     Config             config_;
     CommLayer          comm_;

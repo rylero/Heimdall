@@ -12,6 +12,12 @@ static void shutdown(int) {
     if (g_app) g_app->stop();
 }
 
+#ifdef SIGUSR1
+static void snapshot_signal(int) {
+    if (g_app) g_app->request_snapshot();
+}
+#endif
+
 int main() {
     HeimdallApp::Config cfg = load_app_config("config/heimdall.jsonc");
 
@@ -23,6 +29,10 @@ int main() {
     HeimdallApp app(std::move(cfg));
     g_app = &app;
     std::signal(SIGINT, shutdown);
+#ifdef SIGUSR1
+    std::signal(SIGUSR1, snapshot_signal);
+    std::printf("Snapshot: send SIGUSR1 (kill -USR1 <pid>) to dump next frame to logs/snapshots/.\n");
+#endif
     std::printf("Heimdall starting. Ctrl+C to stop.\n");
     app.run();
     return 0;
