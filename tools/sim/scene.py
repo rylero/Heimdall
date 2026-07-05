@@ -15,10 +15,25 @@ v1 (tag image detection is a video-level / Phase 3 concern); they are carried so
 future renderers and metrics can consume the same scenario file.
 """
 import json
+import math
 import os
 import random
 
 from . import projection
+
+
+def _poisson(lam):
+    """Sample a Poisson(lam) count (Knuth). Used for per-frame clutter counts."""
+    if lam <= 0.0:
+        return 0
+    L = math.exp(-lam)
+    k = 0
+    p = 1.0
+    while True:
+        k += 1
+        p *= random.random()
+        if p <= L:
+            return k - 1
 
 
 # ── Scenario loading ───────────────────────────────────────────────────────────
@@ -31,6 +46,12 @@ DEFAULTS = {
     'noise':    5.0,    # pixel noise std-dev
     'conf':     0.85,   # base detection confidence
     'seed':     42,
+    # Clutter / false-positive injection: mean number of spurious detections per
+    # camera per frame (Poisson). Lets ghost-track and clutter_density behaviour
+    # be tuned -- with 0 clutter the tracker has no false positives to reject.
+    'clutter_rate': 0.0,
+    # Probability a real detection is dropped each frame (missed detection).
+    'dropout':      0.0,
     # Fixed timestamp base (ns) so runs are BITWISE reproducible. Wall-clock
     # time here would make absolute ts differ between runs, perturbing Kalman dt
     # at float64 precision and breaking determinism. Override only if you need a
@@ -148,11 +169,15 @@ def generate(scenario, cameras, out_prefix, overrides=None):
     noise    = float(param('noise'))
     conf     = float(param('conf'))
     seed     = int(param('seed'))
+    clutter_rate = float(param('clutter_rate'))
+    dropout      = float(param('dropout'))
 
     random.seed(seed)
 
     robot   = scenario.get('robot', {'type': 'linear', 'speed': 0.4, 'heading': 0.0})
     objects = scenario.get('objects', [])
+    # Class ids that clutter can masquerade as (the classes actually in the scene).
+    clutter_classes = sorted({int(o.get('class_id', 0)) for o in objects}) or [0]
 
     # Timing
     pose_dt_ns  = int(1e9 / pose_hz)
@@ -176,6 +201,7 @@ def generate(scenario, cameras, out_prefix, overrides=None):
     # Detection frame events + ground truth
     ground_truth = []
     det_total = 0
+    clutter_total = 0
     t_ns = 0
     while t_ns <= total_ns:
         t_s = t_ns / 1e9
@@ -195,6 +221,9 @@ def generate(scenario, cameras, out_prefix, overrides=None):
                 bbox = projection.field_to_pixel(cam, rx, ry, heading, ox, oy, radius)
                 if bbox is None:
                     continue
+                # Missed detection (dropout): object visible but detector misses it.
+                if dropout > 0.0 and random.random() < dropout:
+                    break
                 l, top, w, h = bbox
                 dets.append({
                     'cam':    cam['id'],
@@ -209,6 +238,25 @@ def generate(scenario, cameras, out_prefix, overrides=None):
                 })
                 det_total += 1
                 break  # one camera per object
+
+        # Clutter: spurious detections at random pixels (no GT object behind them).
+        if clutter_rate > 0.0:
+            for cam in cameras:
+                for _ in range(_poisson(clutter_rate)):
+                    cw = random.uniform(12.0, 50.0)
+                    ch = random.uniform(12.0, 50.0)
+                    dets.append({
+                        'cam':    cam['id'],
+                        'cls':    random.choice(clutter_classes),
+                        'conf':   random.uniform(0.35, 0.80),
+                        'l':      random.uniform(0.0, max(1.0, cam['width']  - cw)),
+                        'top':    random.uniform(0.0, max(1.0, cam['height'] - ch)),
+                        'w':      cw,
+                        'h':      ch,
+                        'ts_ns':  base_ns + t_ns,
+                        'cap_ns': base_ns + t_ns,
+                    })
+                    clutter_total += 1
 
         events.append((t_ns, 'frame', {'t': 'frame', 'dets': dets}))
         ground_truth.append({'ts_ns': base_ns + t_ns, 'objects': gt})
@@ -235,6 +283,7 @@ def generate(scenario, cameras, out_prefix, overrides=None):
         'n_poses':   sum(1 for e in events if e[1] == 'pose'),
         'n_frames':  sum(1 for e in events if e[1] == 'frame'),
         'n_dets':    det_total,
+        'n_clutter': clutter_total,
         'n_objects': len(objects),
         'n_apriltags': len(scenario.get('apriltags', [])),
     }

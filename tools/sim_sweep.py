@@ -100,6 +100,10 @@ def main():
     ap.add_argument('--scenario', default='tools/scenarios/basic.jsonc')
     ap.add_argument('--cameras',  default='config/cameras')
     ap.add_argument('--noise',    default='0,5,10,20', help='comma-separated pixel-noise levels')
+    ap.add_argument('--clutter-rate', type=float, default=None,
+                    help='scene clutter (spurious dets/cam/frame) applied to every cell')
+    ap.add_argument('--dropout',  type=float, default=None,
+                    help='scene detection dropout applied to every cell')
     ap.add_argument('--sweep',    action='append', default=[],
                     help='param=v1,v2,... (repeatable; cartesian product)')
     ap.add_argument('--set',      action='append', default=[],
@@ -133,7 +137,9 @@ def main():
     rows = []
     for noise in noises:
         prefix = f"{args.out}_n{noise:g}"
-        stats = scene.generate(scn, cameras, prefix, {'noise': noise})
+        stats = scene.generate(scn, cameras, prefix,
+                               {'noise': noise, 'clutter_rate': args.clutter_rate,
+                                'dropout': args.dropout})
         for combo in combos:
             params = {**fixed, **combo}
             flags = []

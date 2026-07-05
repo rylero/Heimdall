@@ -45,6 +45,10 @@ def main():
     ap.add_argument('--noise',    type=float, default=None, help='Pixel noise std-dev (px)')
     ap.add_argument('--conf',     type=float, default=None, help='Detection confidence')
     ap.add_argument('--seed',     type=int,   default=None, help='RNG seed')
+    ap.add_argument('--clutter-rate', type=float, default=None,
+                    help='mean spurious detections per camera per frame (Poisson)')
+    ap.add_argument('--dropout',  type=float, default=None,
+                    help='probability a real detection is dropped each frame')
     args = ap.parse_args()
 
     # Load cameras; fall back to built-in simulation cameras if config is unusable.
@@ -69,6 +73,7 @@ def main():
     overrides = {
         'duration': args.duration, 'fps': args.fps, 'pose_hz': args.pose_hz,
         'noise': args.noise, 'conf': args.conf, 'seed': args.seed,
+        'clutter_rate': args.clutter_rate, 'dropout': args.dropout,
     }
 
     objs = scn.get('objects', [])

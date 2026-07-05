@@ -93,6 +93,10 @@ def main():
     ap.add_argument('--duration', type=float, default=None)
     ap.add_argument('--noise',    type=float, default=None)
     ap.add_argument('--seed',     type=int,   default=None)
+    ap.add_argument('--clutter-rate', type=float, default=None,
+                    help='mean spurious detections per camera per frame')
+    ap.add_argument('--dropout',  type=float, default=None,
+                    help='probability a real detection is dropped each frame')
     args = ap.parse_args()
 
     cameras, used_fallback = projection.load_cameras_or_sim(args.cameras)
@@ -101,10 +105,11 @@ def main():
 
     scn = scene.load_scenario(args.scenario)
     print(f"[eval] scenario '{scn.get('name', args.scenario)}'")
-    overrides = {'duration': args.duration, 'noise': args.noise, 'seed': args.seed}
+    overrides = {'duration': args.duration, 'noise': args.noise, 'seed': args.seed,
+                 'clutter_rate': args.clutter_rate, 'dropout': args.dropout}
     stats = scene.generate(scn, cameras, args.out, overrides)
     print(f"[eval] generated {stats['n_frames']} frames, {stats['n_dets']} dets "
-          f"-> {stats['recording']}")
+          f"(+{stats['n_clutter']} clutter) -> {stats['recording']}")
 
     out_jsonl = args.out + '_replay_out.jsonl'
 
