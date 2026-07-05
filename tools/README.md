@@ -85,6 +85,41 @@ cmake --build build --target heimdall_replay -j
 WSL is a fallback if the toolchain misbehaves. The first configure/build is slow
 (protobuf + libzmq compile from source via FetchContent).
 
+## Deterministic tuning
+
+The sim is **bitwise reproducible**: the scenario seed fixes the noise RNG and a
+fixed timestamp base (`base_ns`) keeps absolute times constant, so the same
+inputs + same tracker params always produce the same metrics. `heimdall_replay`
+accepts the tracker parameters as flags (`--gate-distance`, `--clutter-density`,
+`--confirm-frames`, `--loss-frames`, `--meas-noise-r`, `--process-noise-q`,
+`--p-detection`, `--pos-cov-floor`, `--filter-model cp|cv|ca`), so tuning is a
+reproducible grid search, not guesswork.
+
+> Note: replay uses the `ObjectTrackerConfig` struct defaults unless you pass
+> flags — it does **not** read `config/heimdall.jsonc`. Pass your deployed values
+> (e.g. `--gate-distance 2.0 --confirm-frames 2 --loss-frames 15`) to reproduce
+> production behaviour.
+
+`tools/sim_sweep.py` runs a grid over noise levels and any tracker params:
+
+```bash
+# sweep the gate distance at several noise levels
+python tools/sim_sweep.py --scenario tools/scenarios/basic.jsonc \
+    --noise 0,5,10,20 --sweep gate_distance=0.5,1.0,2.0
+
+# 2-D grid with a fixed override on every cell
+python tools/sim_sweep.py --noise 0,10 \
+    --sweep clutter_density=0.5,1,2 --sweep confirm_frames=2,3 --set loss_frames=15
+```
+
+Results print as a table and are written to CSV (`--csv`). Read the columns
+together: `gate_distance` trades **recall** against **ID switches** and position
+error — a gate wider than the object spacing lets a track grab a neighbour's
+detection and swap identity. `ghost_tracks` (tracks that never match any real
+object) is the true false-positive count; `offgate_track_frames` is real tracks
+whose estimate drifted past the match gate (mostly the range-dependent
+projection offset), *not* false positives.
+
 ## Guardrail
 
 `tools/tests/test_model_sync.py` round-trips known field points through the real
