@@ -144,7 +144,9 @@ def main():
     pos_errors, err_by_range = [], {}
     gt_to_track, id_switches = {}, 0
     gt_first_visible, confirm_latency_ns = {}, {}
-    false_tracks = 0
+    offgate_track_frames = 0           # active-track frames whose estimate is > gate from any GT
+    all_track_ids = set()              # every track_id the pipeline emitted
+    matched_track_ids = set()          # track_ids that matched a real GT object at least once
     total_track_events = matched_events = 0
     visible_object_frames = 0          # GT objects in view (gated) or all GT (ungated)
     missed_object_frames = 0
@@ -169,9 +171,17 @@ def main():
         else:
             visible = gt_objects  # no visibility info; treat all as "expected"
 
+        for e in events:
+            all_track_ids.add(int(e['track_id']))
+
         pairs, unmatched_e, unmatched_g = greedy_match(events, gt_objects, args.gate)
         matched_events += len(pairs)
-        false_tracks   += len(unmatched_e)
+        # An unmatched active-track frame is NOT necessarily a ghost: it is often a
+        # real track whose estimate drifted past the gate (range offset / lag).
+        # Count these separately; true false positives are tracks that NEVER match.
+        offgate_track_frames += len(unmatched_e)
+        for ev in pairs:
+            matched_track_ids.add(int(ev[0]['track_id']))
 
         visible_ids = {int(go['obj_id']) for go in visible}
         visible_object_frames += len(visible_ids)
@@ -216,12 +226,14 @@ def main():
         visible_object_frames = None  # not meaningful without visibility
 
     recall = (matched_events / visible_object_frames) if visible_object_frames else float('nan')
+    ghost_tracks = sorted(all_track_ids - matched_track_ids)
 
     metrics = {
         'gated_by_visibility':  gated,
         'frames_scored':        frames_scored,
         'frames_unaligned':     frames_unaligned,
         'tracked_objects':      len(ever_matched),
+        'total_tracks':         len(all_track_ids),
         'pos_err_mean_m':       (sum(pos_errors) / len(pos_errors)) if pos_errors else float('nan'),
         'pos_err_p95_m':        percentile(pos_errors, 95),
         'pos_err_max_m':        max(pos_errors) if pos_errors else float('nan'),
@@ -229,7 +241,8 @@ def main():
         'confirm_latency_ms_mean': (
             (sum(confirm_latency_ns.values()) / len(confirm_latency_ns) / 1e6)
             if confirm_latency_ns else float('nan')),
-        'false_tracks':         false_tracks,
+        'ghost_tracks':         len(ghost_tracks),
+        'offgate_track_frames': offgate_track_frames,
         'missed_object_frames': missed_object_frames,
         'visible_object_frames': visible_object_frames,
         'recall':               recall,
@@ -258,8 +271,10 @@ def main():
     if gated:
         print(f"  recall (visible objects)  : {fmt(metrics['recall'])} "
               f"({metrics['matched_events']}/{metrics['visible_object_frames']})")
-    print(f"  false tracks              : {metrics['false_tracks']}")
-    print(f"  tracked objects           : {metrics['tracked_objects']}")
+    print(f"  tracks total / tracked obj: {metrics['total_tracks']} / {metrics['tracked_objects']}")
+    print(f"  ghost tracks (never match): {metrics['ghost_tracks']}   <- true false positives")
+    print(f"  off-gate track-frames     : {metrics['offgate_track_frames']}  "
+          f"(real tracks drifted > {args.gate} m; mostly range offset, not ghosts)")
     print(f"  track dropouts (frames)   : {metrics['missed_object_frames']}"
           f"{'' if gated else '  (gated to tracked objects)'}")
     if metrics['pos_err_by_range_m']:
