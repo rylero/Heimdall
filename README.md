@@ -50,7 +50,7 @@ config/           — Runtime config files (no recompile needed to tune)
 proto/            — Protobuf message definitions (RobotPoseMsg, DetectionFrameMsg, VisionPoseMsg)
 vendordep/        — Java client library published to a local maven repo
 examples/
-└── HeimdalTest/  — Complete FRC robot project showing Heimdall integration
+└── HeimdallTest/ — Complete FRC robot project showing Heimdall integration
 docker/           — Dockerfile and docker-compose for Jetson deployment
 training/         — RF-DETR training pipeline (dataset prep → train → export → TRT)
 tests/            — C++ unit tests (Catch2)
@@ -66,7 +66,7 @@ All tunable parameters live in `config/heimdall.jsonc` — tracker gate distance
 
 ## Java integration
 
-The `vendordep/` directory contains a Java client library (`HeimdallLib-java`) for the RoboRIO side. See `examples/HeimdalTest/` for a complete working robot project using it.
+The `vendordep/` directory contains a Java client library (`HeimdallLib-java`) for the RoboRIO side. See `examples/HeimdallTest/` for a complete working robot project using it.
 
 ## Development
 
