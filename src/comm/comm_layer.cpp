@@ -1,6 +1,6 @@
 #include "comm_layer.h"
 #include "heimdall.pb.h"
-#include <time.h>
+#include <chrono>
 
 CommLayer::CommLayer(Config config)
     : ctx_(1),
@@ -8,11 +8,20 @@ CommLayer::CommLayer(Config config)
       output_pub_sock_(ctx_, zmq::socket_type::pub),
       apriltag_pose_pub_sock_(ctx_, zmq::socket_type::pub)
 {
+    // Latest-value semantics (5.4). Without CONFLATE a briefly-slow subscriber accumulates
+    // up to SNDHWM (default 1000) queued frames and then reads stale backlog instead of the
+    // newest — defeating the "drop stale, never block" design. CONFLATE keeps only the most
+    // recent message. Must be set BEFORE bind/connect. (CONFLATE is single-part only, which
+    // is fine — these sockets never send multipart.)
+    output_pub_sock_.set(zmq::sockopt::conflate, 1);
     pose_pull_sock_.set(zmq::sockopt::rcvtimeo, 0);
+    // Keep only the freshest few poses queued; recv loop drains them each cycle.
+    pose_pull_sock_.set(zmq::sockopt::rcvhwm, 4);
     pose_pull_sock_.bind(config.pose_bind_addr);
     output_pub_sock_.bind(config.output_bind_addr);
 
     if (!config.apriltag_pose_bind_addr.empty()) {
+        apriltag_pose_pub_sock_.set(zmq::sockopt::conflate, 1);
         apriltag_pose_pub_sock_.bind(config.apriltag_pose_bind_addr);
         apriltag_pose_enabled_ = true;
     }
@@ -27,10 +36,9 @@ std::optional<CommLayer::TimestampedPose> CommLayer::try_recv_pose() {
     if (!proto.ParseFromArray(msg.data(), static_cast<int>(msg.size())))
         return std::nullopt;
 
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    const uint64_t recv_ns = static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL
-                           + static_cast<uint64_t>(ts.tv_nsec);
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const uint64_t recv_ns =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
 
     return TimestampedPose{
         RobotPose{proto.x(), proto.y(), proto.heading(), proto.vyaw(), proto.timestamp_ns()},
