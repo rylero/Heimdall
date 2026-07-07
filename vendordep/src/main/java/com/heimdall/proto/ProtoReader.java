@@ -82,10 +82,7 @@ public final class ProtoReader {
 
             switch (field) {
                 case 1: { // repeated TrackEventMsg
-                    int len = (int) readVarint(buf);
-                    byte[] embedded = new byte[len];
-                    buf.get(embedded);
-                    events.add(parseTrackEvent(embedded));
+                    events.add(parseTrackEvent(readLengthDelimited(buf)));
                     break;
                 }
                 case 2: // timestamp_ns
@@ -121,10 +118,7 @@ public final class ProtoReader {
                     break;
                 }
                 case 2: { // TrackedObjectMsg
-                    int len = (int) readVarint(buf);
-                    byte[] embedded = new byte[len];
-                    buf.get(embedded);
-                    obj = parseTrackedObject(embedded);
+                    obj = parseTrackedObject(readLengthDelimited(buf));
                     break;
                 }
                 default:
@@ -159,6 +153,21 @@ public final class ProtoReader {
             }
         }
         return new TrackedObject(trackId, classId, x, y, vx, vy, ax, ay, confidence);
+    }
+
+    /**
+     * Reads a length-delimited field, validating the length prefix against the bytes
+     * actually remaining before allocating (5.20). A corrupt/truncated frame could
+     * otherwise request up to ~2 GB from an untrusted varint length.
+     */
+    private static byte[] readLengthDelimited(ByteBuffer buf) {
+        int len = (int) readVarint(buf);
+        if (len < 0 || len > buf.remaining())
+            throw new IllegalArgumentException(
+                "proto length-delimited field length out of range: " + len);
+        byte[] out = new byte[len];
+        buf.get(out);
+        return out;
     }
 
     private static long readVarint(ByteBuffer buf) {
