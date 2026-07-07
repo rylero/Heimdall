@@ -48,6 +48,28 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         if (t.contains("pos_cov_floor"))       cfg.tracker.pos_cov_floor       = t.at("pos_cov_floor").get<float>();
         if (t.contains("mahalanobis_gate"))    cfg.tracker.mahalanobis_gate    = t.at("mahalanobis_gate").get<float>();
         if (t.contains("filter_model"))        cfg.tracker.filter_model        = parse_filter_model(t.at("filter_model").get<std::string>());
+
+        // Range validation — catch config typos that would otherwise load silently and break
+        // the filter (e.g. the historical meas_noise_r: 0 → division blow-up).
+        const auto& tk = cfg.tracker;
+        if (tk.meas_noise_r <= 0.f)
+            throw std::runtime_error("tracker.meas_noise_r must be > 0");
+        if (tk.process_noise_q < 0.f)
+            throw std::runtime_error("tracker.process_noise_q must be >= 0");
+        if (tk.pos_cov_floor < 0.f)
+            throw std::runtime_error("tracker.pos_cov_floor must be >= 0");
+        if (tk.gate_distance <= 0.f)
+            throw std::runtime_error("tracker.gate_distance must be > 0");
+        if (tk.mahalanobis_gate <= 0.f)
+            throw std::runtime_error("tracker.mahalanobis_gate must be > 0");
+        if (tk.p_detection <= 0.f || tk.p_detection > 1.f)
+            throw std::runtime_error("tracker.p_detection must be in (0, 1]");
+        if (tk.clutter_density < 0.f)
+            throw std::runtime_error("tracker.clutter_density must be >= 0");
+        if (tk.confirmation_frames < 1)
+            throw std::runtime_error("tracker.confirmation_frames must be >= 1");
+        if (tk.loss_frames < 1)
+            throw std::runtime_error("tracker.loss_frames must be >= 1");
     }
 
     if (j.contains("comm")) {

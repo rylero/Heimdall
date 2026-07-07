@@ -8,23 +8,28 @@ std::string build_source_description(const CameraConfig& cfg) {
                    : cfg.flip_h                 ? 4
                    : cfg.flip_v                 ? 6
                                                 : 0;
-    const std::string vidconv = " ! nvvidconv flip-method=" + std::to_string(flip);
+    // Force NVMM output so the handoff to nvstreammux (which wants NVMM) is explicit rather
+    // than left to implicit negotiation (5.21).
+    const std::string vidconv = " ! nvvidconv flip-method=" + std::to_string(flip)
+                              + " ! video/x-raw(memory:NVMM)";
 
     std::ostringstream ss;
     switch (cfg.type) {
-        case CameraType::USB:
+        case CameraType::USB: {
+            const bool is_jpeg = cfg.pixel_format.find("jpeg") != std::string::npos;
             ss << "v4l2src device=" << cfg.device
-               << " io-mode=2"  // explicit MMAP
-               << " ! image/jpeg"
+               << " io-mode=" << cfg.io_mode
+               << " ! " << cfg.pixel_format
                << ",width="  << cfg.width
                << ",height=" << cfg.height
                << ",framerate=" << cfg.fps << "/1";
-            if (cfg.hw_decode) {
-                ss << " ! nvv4l2decoder mjpeg=1" << vidconv;
-            } else {
-                ss << " ! jpegparse ! jpegdec" << vidconv;
+            if (is_jpeg) {
+                ss << (cfg.hw_decode ? " ! nvv4l2decoder mjpeg=1" : " ! jpegparse ! jpegdec");
             }
+            // Raw formats (e.g. YUY2) need no decoder — go straight to nvvidconv.
+            ss << vidconv;
             break;
+        }
         case CameraType::CSI:
             ss << "nvarguscamerasrc sensor-id=" << cfg.device
                << " ! video/x-raw(memory:NVMM)"

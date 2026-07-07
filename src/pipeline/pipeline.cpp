@@ -25,14 +25,29 @@ DeepStreamPipeline::~DeepStreamPipeline() {
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
 
+    // The per-slot probe arrays (s_cam_slots, s_decode_done_ns) are fixed-size 8; guard against
+    // an out-of-bounds user_data write if more cameras are ever configured (5.22).
+    if (cameras_.empty())
+        throw std::runtime_error("no cameras configured");
+    if (cameras_.size() > 8)
+        throw std::runtime_error("at most 8 cameras supported (fixed-size probe slot arrays)");
+
+    // Mux/tiler dimensions from the MAX camera resolution, not camera[0] — cameras may differ
+    // and assuming uniform resolution crops the larger ones (5.22).
+    int max_w = 0, max_h = 0;
+    for (const auto& c : cameras_) {
+        if (c.width  > max_w) max_w = c.width;
+        if (c.height > max_h) max_h = c.height;
+    }
+
     pipeline_ = gst_pipeline_new("heimdall");
     if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
 
     GstElement* mux = gst_element_factory_make("nvstreammux", "mux");
     if (!mux) throw std::runtime_error("Failed to create nvstreammux");
     g_object_set(mux,
-        "width",                static_cast<gint>(cameras_[0].width),
-        "height",               static_cast<gint>(cameras_[0].height),
+        "width",                static_cast<gint>(max_w),
+        "height",               static_cast<gint>(max_h),
         "batch-size",           static_cast<gint>(cameras_.size()),
         "batched-push-timeout", 1000000,
         "live-source",          TRUE,
@@ -189,8 +204,8 @@ void DeepStreamPipeline::build() {
     g_object_set(tiler,
         "rows",    static_cast<guint>(tiler_rows),
         "columns", static_cast<guint>(tiler_cols),
-        "width",   static_cast<guint>(cameras_[0].width  * tiler_cols),
-        "height",  static_cast<guint>(cameras_[0].height * tiler_rows),
+        "width",   static_cast<guint>(max_w * tiler_cols),
+        "height",  static_cast<guint>(max_h * tiler_rows),
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), tiler);
 
