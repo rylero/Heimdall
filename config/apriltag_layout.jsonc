@@ -9,6 +9,29 @@
   // or if that feed is not trustworthy enough to seed the constrained solve.
   "force_unconstrained_solver": false,
 
+  // ── Detector + pose-solve tuning ─────────────────────────────────────────
+  // Previously hardcoded; exposed here so they can be tuned per venue without a
+  // recompile. Omit the whole block to accept the defaults shown.
+  "solver": {
+    // Input downsample before tag detection. Higher = faster but shorter detection
+    // range (2.0 halves resolution). Lower to 1.0 to detect smaller/farther tags at
+    // a CPU cost. The #1 knob to tune for a venue's tag distances.
+    "quad_decimate": 2.0,
+    // Gaussian blur (sigma) applied before detection; 0 = off. Raise slightly on
+    // noisy/low-light images to reduce false quads.
+    "quad_sigma": 0.0,
+    // Detector worker threads.
+    "nthreads": 2,
+    // Sub-pixel corner refinement (improves pose accuracy; small CPU cost).
+    "refine_edges": true,
+    // Reject an IPPE solve when its error ratio (best/second) exceeds this — the
+    // two solutions are too similar to trust. 0.25 ≈ second solution within 4x.
+    "ambiguity_max": 0.25,
+    // Above this ratio, disambiguate the two IPPE solutions by picking the one whose
+    // robot origin sits on the floor (z≈0) instead of always taking solution 0.
+    "floor_disambiguation_min": 0.15
+  },
+
   // ── AprilTag camera ──────────────────────────────────────────────────────
   // This is a SEPARATE USB camera from the two object-detection cameras.
   // It must be forward/wall-facing so it can see AprilTags.

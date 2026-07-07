@@ -25,10 +25,25 @@ struct RobotToCameraTransform {
     double roll, pitch, yaw; // radians
 };
 
+// AprilTag detector + pose-solve tuning. Previously hardcoded in apriltag_detector.cpp;
+// exposed here so they can be tuned per venue without a recompile.
+struct AprilTagSolverParams {
+    // apriltag_detector tuning
+    float  quad_decimate = 2.0f;   // input downsample: higher = faster but shorter detection range
+    float  quad_sigma    = 0.0f;   // gaussian blur (sigma) before detection; >0 helps noisy images
+    int    nthreads      = 2;      // detector worker threads
+    bool   refine_edges  = true;   // sub-pixel corner refinement
+
+    // Pose disambiguation (IPPE fallback)
+    double ambiguity_max            = 0.25;  // reject IPPE solves with error-ratio above this
+    double floor_disambiguation_min = 0.15;  // above this ratio, pick the on-floor (z≈0) solution
+};
+
 struct AprilTagLayout {
     double                             tag_size_meters = 0.1651;
     AprilTagCameraParams               camera;
     RobotToCameraTransform             robot_to_camera;
+    AprilTagSolverParams               solver;
     std::unordered_map<int, TagPose>   tags;
 
     // When true, always use the unconstrained IPPE_SQUARE solver — never the

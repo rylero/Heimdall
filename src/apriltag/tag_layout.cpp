@@ -32,6 +32,18 @@ AprilTagLayout load_apriltag_layout(const std::string& path) {
     cam.p2 = jc.value("p2", 0.0);
     cam.k3 = jc.value("k3", 0.0);
 
+    // AprilTag detector / solve tuning (optional block; defaults if absent)
+    if (j.contains("solver")) {
+        auto  js = j.at("solver");
+        auto& s  = layout.solver;
+        s.quad_decimate            = js.value("quad_decimate", s.quad_decimate);
+        s.quad_sigma               = js.value("quad_sigma",    s.quad_sigma);
+        s.nthreads                 = js.value("nthreads",      s.nthreads);
+        s.refine_edges             = js.value("refine_edges",  s.refine_edges);
+        s.ambiguity_max            = js.value("ambiguity_max", s.ambiguity_max);
+        s.floor_disambiguation_min = js.value("floor_disambiguation_min", s.floor_disambiguation_min);
+    }
+
     // Robot -> Camera Transform
     auto  jr = j.at("robot_to_camera");
     auto& r  = layout.robot_to_camera;

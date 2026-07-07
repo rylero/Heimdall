@@ -13,6 +13,8 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <poll.h>
+#include <time.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -146,7 +148,10 @@ struct AprilTagDetector::Impl {
     Impl(AprilTagLayout lay) : layout(std::move(lay)) {
         auto& c = layout.camera;
 
-        v4l2_fd = open(c.device.c_str(), O_RDWR);
+        // O_NONBLOCK so DQBUF returns EAGAIN instead of blocking forever if the camera
+        // stalls (brownout / USB re-enumeration) — detect() poll()s with a timeout and
+        // checks running_ between frames, so stop()/join can't deadlock (5.8).
+        v4l2_fd = open(c.device.c_str(), O_RDWR | O_NONBLOCK);
         if (v4l2_fd < 0) {
             std::fprintf(stderr, "[apriltag] open %s: %s\n",
                          c.device.c_str(), std::strerror(errno));
@@ -224,10 +229,11 @@ struct AprilTagDetector::Impl {
         tf  = tag36h11_create();
         det = apriltag_detector_create();
         apriltag_detector_add_family(det, tf);
-        det->quad_decimate = 2.0f;
-        det->nthreads      = 2;
+        det->quad_decimate = layout.solver.quad_decimate;
+        det->quad_sigma    = layout.solver.quad_sigma;
+        det->nthreads      = layout.solver.nthreads;
         det->debug         = 0;
-        det->refine_edges  = 1;
+        det->refine_edges  = layout.solver.refine_edges ? 1 : 0;
 
         cam_mat = (cv::Mat_<double>(3,3) <<
             c.fx, 0,    c.cx,
@@ -314,17 +320,28 @@ struct AprilTagDetector::Impl {
             [](const PoseSample& s, uint64_t t) { return s.timestamp_ns < t; });
 
         if (it == pose_history.begin()) {
-            // target is before history — extrapolate backward from oldest sample
+            // target is before the whole history. Bound the backward extrapolation: if the
+            // capture time predates the oldest sample by more than the staleness window it's
+            // implausible (e.g. a bad capture timestamp), so reject rather than extrapolate
+            // yaw over a large negative dt (5.5).
+            if (it->timestamp_ns > target_ns &&
+                it->timestamp_ns - target_ns > GYRO_STALE_NS)
+                return std::nullopt;
             double dt = static_cast<double>(
                 static_cast<int64_t>(target_ns - it->timestamp_ns)) * 1e-9;
             return it->yaw + it->vyaw * dt;
         }
 
-        // Interpolate between prev and it
+        // Linearly interpolate between the two straddling samples prev (< target) and it
+        // (>= target), using the true slope between them — not prev's stored vyaw (5.12).
         auto prev = std::prev(it);
-        double dt = static_cast<double>(
-            static_cast<int64_t>(target_ns - prev->timestamp_ns)) * 1e-9;
-        return prev->yaw + prev->vyaw * dt;
+        const double span = static_cast<double>(
+            static_cast<int64_t>(it->timestamp_ns - prev->timestamp_ns));
+        if (span <= 0.0) return prev->yaw;
+        const double frac = static_cast<double>(
+            static_cast<int64_t>(target_ns - prev->timestamp_ns)) / span;
+        const double dyaw = wrap_angle(it->yaw - prev->yaw);  // shortest-arc, handles wrap
+        return wrap_angle(prev->yaw + frac * dyaw);
     }
 
     // ---------------------------------------------------------------------------
@@ -425,9 +442,17 @@ struct AprilTagDetector::Impl {
                                     cv::noArray(), cv::noArray(), errors);
         if (n < 1) return std::nullopt;
 
-        double ambiguity = (n >= 2 && errors[1] > 1e-6) ? (errors[0] / errors[1]) : 0.0;
+        // ambiguity = errors[0]/errors[1] ∈ [0,1]; nearer 1 = the second solution reprojects
+        // almost as well (more ambiguous). When errors[1] ≈ 0 BOTH solutions reproject
+        // perfectly — the *maximally* ambiguous case — so treat it as ~1 and let the
+        // ambiguity_max reject fire, instead of the old code's 0.0 which blindly trusted
+        // solution 0 (5.11).
+        double ambiguity;
+        if (n < 2)                      ambiguity = 0.0;   // single solution — unambiguous
+        else if (errors[1] > 1e-6)      ambiguity = errors[0] / errors[1];
+        else                            ambiguity = 1.0;   // both near-perfect → maximally ambiguous
         if (out_ambiguity) *out_ambiguity = ambiguity;
-        if (ambiguity > 0.25) return std::nullopt;
+        if (ambiguity > layout.solver.ambiguity_max) return std::nullopt;
 
         cv::Mat T_field_tag = make_transform(tp.x, tp.y, tp.z, tp.roll, tp.pitch, tp.yaw);
 
@@ -441,7 +466,7 @@ struct AprilTagDetector::Impl {
 
         // Pick the solution whose robot origin is closer to z=0 (on the floor)
         int sol = 0;
-        if (n >= 2 && ambiguity > 0.15) {
+        if (n >= 2 && ambiguity > layout.solver.floor_disambiguation_min) {
             cv::Mat T0 = to_field_robot(0), T1 = to_field_robot(1);
             if (std::abs(T1.at<double>(2, 3)) < std::abs(T0.at<double>(2, 3))) sol = 1;
         }
@@ -482,17 +507,36 @@ void AprilTagDetector::update_gyro(double yaw, double vyaw, uint64_t timestamp_n
 std::optional<VisionPoseResult> AprilTagDetector::detect() {
     if (!is_open()) return std::nullopt;
 
-    // Block until a frame is ready (DQBUF blocks in non-O_NONBLOCK mode)
+    // Wait for a frame with a timeout so a stalled camera can't block shutdown (5.8).
+    // The fd is O_NONBLOCK, so poll() gates DQBUF; on timeout we return and the caller
+    // re-checks running_.
+    struct pollfd pfd { impl_->v4l2_fd, POLLIN, 0 };
+    const int pr = poll(&pfd, 1, 200 /* ms */);
+    if (pr <= 0 || !(pfd.revents & POLLIN))
+        return std::nullopt;  // timeout or error — let the loop re-check running_
+
     struct v4l2_buffer buf = {};
     buf.type   = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
     if (ioctl(impl_->v4l2_fd, VIDIOC_DQBUF, &buf) < 0)
         return std::nullopt;
 
-    // Kernel-provided timestamp (monotonic) — same domain as pose_history timestamps
-    const uint64_t capture_ns =
+    // Kernel-provided capture timestamp. It should be CLOCK_MONOTONIC (same domain as the
+    // gyro pose_history), but not all UVC drivers set that — some emit 0 or a different
+    // clock. If the monotonic flag is missing or the value is 0, fall back to reading
+    // CLOCK_MONOTONIC now (5.5). A bogus (e.g. 0) capture time would otherwise send
+    // interpolate_yaw back-extrapolating over a multi-second negative dt → garbage yaw.
+    uint64_t capture_ns =
         static_cast<uint64_t>(buf.timestamp.tv_sec)  * 1'000'000'000ULL +
         static_cast<uint64_t>(buf.timestamp.tv_usec) * 1'000ULL;
+    const bool ts_is_monotonic =
+        (buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) == V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+    if (!ts_is_monotonic || capture_ns == 0) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        capture_ns = static_cast<uint64_t>(ts.tv_sec) * 1'000'000'000ULL
+                   + static_cast<uint64_t>(ts.tv_nsec);
+    }
 
     // YUYV: each pixel pair is [Y0 U Y1 V]; Y bytes at even offsets = grayscale
     const auto* yuyv = static_cast<const uint8_t*>(impl_->buf_start[buf.index]);
@@ -523,7 +567,15 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
     zarray_t* dets = apriltag_detector_detect(impl_->det, &img);
 
     const double hs = impl_->layout.tag_size_meters / 2.0;
-    // Tag corners in tag-local space (apriltag convention: CCW from bottom-left)
+    // Tag corners in tag-local space, paired index-for-index with apriltag's d->p[].
+    // apriltag maps tag-normalized coords (-1,-1),(1,-1),(1,1),(-1,1) → p[0..3], which in a
+    // tag frame with +x right / +y up is bottom-left, bottom-right, top-right, top-left.
+    // The order below is TL,TR,BR,BL — the vertical mirror of that. It is consistent with the
+    // solve only if this camera's image y-axis convention flips it back; the yaw
+    // self-calibration converging in practice is evidence it lines up, but this has NOT been
+    // verified against a known tag at a measured pose. 5.6: verify with a static known-tag
+    // frame (cross-check PhotonVision/wpical ordering) before trusting absolute heading; a
+    // mismatch yields a low-reprojection but rotated/mirrored pose that looks "locked".
     const std::vector<cv::Point3d> obj_pts = {
         {-hs,  hs, 0},
         { hs,  hs, 0},
