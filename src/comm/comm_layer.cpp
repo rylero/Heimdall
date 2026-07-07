@@ -1,5 +1,6 @@
 #include "comm_layer.h"
 #include "heimdall.pb.h"
+#include "proto_version.h"
 #include <chrono>
 
 CommLayer::CommLayer(Config config)
@@ -40,9 +41,29 @@ std::optional<CommLayer::TimestampedPose> CommLayer::try_recv_pose() {
     const uint64_t recv_ns =
         static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
 
+    // Map the robot's own pose timestamp into the Jetson monotonic domain (§2A.2). Using the
+    // robot's timestamp (jitter-free) rather than the raw reception time removes network+poll
+    // jitter from detection↔pose association and the gyro stamp. offset = min(recv − robot_ts),
+    // drifting up slowly to follow clock skew. Falls back to raw recv if the robot sends no
+    // timestamp (0).
+    const uint64_t robot_ts = proto.timestamp_ns();
+    uint64_t match_ns = recv_ns;
+    if (robot_ts != 0) {
+        const int64_t delta = static_cast<int64_t>(recv_ns) - static_cast<int64_t>(robot_ts);
+        if (!clock_offset_init_) {
+            clock_offset_ns_   = delta;
+            clock_offset_init_ = true;
+        } else if (delta < clock_offset_ns_) {
+            clock_offset_ns_ = delta;                                   // adopt lower-latency sample
+        } else {
+            clock_offset_ns_ += (delta - clock_offset_ns_) >> 10;       // slow upward drift (~/1024)
+        }
+        match_ns = static_cast<uint64_t>(static_cast<int64_t>(robot_ts) + clock_offset_ns_);
+    }
+
     return TimestampedPose{
         RobotPose{proto.x(), proto.y(), proto.heading(), proto.vyaw(), proto.timestamp_ns()},
-        recv_ns
+        match_ns
     };
 }
 
@@ -52,6 +73,7 @@ void CommLayer::send_tracking_frame(const std::vector<TrackEvent>& events,
     heimdall::DetectionFrameMsg frame;
     frame.set_timestamp_ns(timestamp_ns);
     frame.set_healthy(healthy);
+    frame.set_proto_version(heimdall::PROTO_VERSION);
 
     for (const auto& ev : events) {
         auto* msg_ev = frame.add_events();
@@ -81,14 +103,30 @@ void CommLayer::send_tracking_frame(const std::vector<TrackEvent>& events,
     }
 }
 
-void CommLayer::send_apriltag_pose(float x, float y, float heading_rad, uint64_t timestamp_ns) {
+void CommLayer::send_apriltag_pose(float x, float y, float heading_rad, uint64_t capture_ns,
+                                   uint32_t tag_count, float avg_tag_distance, float reproj_error,
+                                   float ambiguity, uint32_t solve_mode) {
     if (!apriltag_pose_enabled_) return;
+
+    // latency = age of the estimate at send time, so the robot can convert to FPGA time
+    // (fpgaNow − latency) without any Jetson↔robot clock sync (§2A.1).
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const uint64_t now_ns =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    const uint64_t latency_ns = (now_ns > capture_ns) ? (now_ns - capture_ns) : 0;
 
     heimdall::VisionPoseMsg msg;
     msg.set_x(x);
     msg.set_y(y);
     msg.set_heading(heading_rad);
-    msg.set_timestamp_ns(timestamp_ns);
+    msg.set_timestamp_ns(capture_ns);
+    msg.set_latency_ns(latency_ns);
+    msg.set_tag_count(tag_count);
+    msg.set_avg_tag_distance(avg_tag_distance);
+    msg.set_reproj_error(reproj_error);
+    msg.set_ambiguity(ambiguity);
+    msg.set_solve_mode(solve_mode);
+    msg.set_proto_version(heimdall::PROTO_VERSION);
 
     std::string bytes = msg.SerializeAsString();
     try {

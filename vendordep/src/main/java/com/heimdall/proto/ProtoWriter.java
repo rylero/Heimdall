@@ -35,6 +35,9 @@ public final class ProtoWriter {
         if (vyaw != 0.0f) {
             writeFloat(out, 5, vyaw);
         }
+        // proto_version = 15 (varint). Stamped so the Jetson can detect a jar/image skew (§2F).
+        writeTag(out, 15, 0);
+        writeVarint(out, ProtoVersion.PROTO_VERSION);
         return out.toByteArray();
     }
 

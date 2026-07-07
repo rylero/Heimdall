@@ -96,7 +96,12 @@ void HeimdallApp::apriltag_loop() {
                 static_cast<float>(result->x),
                 static_cast<float>(result->y),
                 static_cast<float>(result->heading_rad),
-                result->timestamp_ns);
+                result->timestamp_ns,
+                result->tag_count,
+                static_cast<float>(result->avg_tag_distance),
+                static_cast<float>(result->reproj_error),
+                static_cast<float>(result->ambiguity),
+                result->solve_mode);
         }
     }
 }
