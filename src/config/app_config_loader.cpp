@@ -46,6 +46,7 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         if (t.contains("meas_noise_r"))        cfg.tracker.meas_noise_r        = t.at("meas_noise_r").get<float>();
         if (t.contains("process_noise_q"))     cfg.tracker.process_noise_q     = t.at("process_noise_q").get<float>();
         if (t.contains("pos_cov_floor"))       cfg.tracker.pos_cov_floor       = t.at("pos_cov_floor").get<float>();
+        if (t.contains("mahalanobis_gate"))    cfg.tracker.mahalanobis_gate    = t.at("mahalanobis_gate").get<float>();
         if (t.contains("filter_model"))        cfg.tracker.filter_model        = parse_filter_model(t.at("filter_model").get<std::string>());
     }
 

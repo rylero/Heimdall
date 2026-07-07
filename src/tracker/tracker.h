@@ -15,6 +15,7 @@ struct ObjectTrackerConfig {
     float       meas_noise_r        = 0.16f;  // measurement noise variance (m^2)
     float       process_noise_q     = 2.0f;   // process noise intensity
     float       pos_cov_floor       = 0.1f;   // minimum position covariance diagonal
+    float       mahalanobis_gate    = MAHALANOBIS_GATE_THRESHOLD;  // chi-square statistical gate (2 DOF)
 };
 
 class ObjectTracker {
