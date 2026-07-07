@@ -34,7 +34,10 @@ public:
     DetectionProcessor(Config config, DetectionOutput& output);
 
     void push_pose(const CommLayer::TimestampedPose& p);
-    void process(const std::vector<Detection>& dets);
+    // frame_capture_ns: optional frame-level capture time. When nonzero it is used as the
+    // timestamp for an EMPTY frame (replay feeds the recorded time so LOST/miss timing is
+    // reproduced faithfully, 5.17). Zero (live) falls back to wall-clock extrapolation.
+    void process(const std::vector<Detection>& dets, uint64_t frame_capture_ns = 0);
 
     // Request a one-shot debug snapshot: the next process() call dumps its full
     // inputs/intermediate/outputs to a JSON file. Thread-safe.

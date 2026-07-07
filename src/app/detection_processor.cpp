@@ -25,7 +25,7 @@ void DetectionProcessor::push_pose(const CommLayer::TimestampedPose& p) {
     pose_buffer_.push(p);
 }
 
-void DetectionProcessor::process(const std::vector<Detection>& dets) {
+void DetectionProcessor::process(const std::vector<Detection>& dets, uint64_t frame_capture_ns) {
     const bool take_snapshot = snapshot_requested_.exchange(false, std::memory_order_relaxed);
     // Pipeline health (5.16): forwarded on every tracking frame. Null flag → healthy (replay).
     const bool healthy = !config_.healthy_flag
@@ -43,7 +43,11 @@ void DetectionProcessor::process(const std::vector<Detection>& dets) {
     last_wall_time_ = wall_now;
 
     if (dets.empty()) {
-        const double ts_s = static_cast<double>(last_timestamp_ns_) * 1e-9 + wall_elapsed_s;
+        // Replay passes the recorded frame time (deterministic); live passes 0 and extrapolates
+        // from wall-clock elapsed (5.17).
+        const double ts_s = (frame_capture_ns != 0)
+            ? static_cast<double>(frame_capture_ns) * 1e-9
+            : static_cast<double>(last_timestamp_ns_) * 1e-9 + wall_elapsed_s;
         const auto events = tracker_.update({}, ts_s);
         last_timestamp_ns_ = static_cast<uint64_t>(ts_s * 1e9);
 

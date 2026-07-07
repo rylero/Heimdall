@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  # Hardware-free C++ core (tracker / pose / comm / pose_buffer) builds and unit-tests on
+  # plain x86 — DeepStream/GStreamer/OpenCV/apriltag are absent, so those targets are skipped
+  # by CMake. Protobuf/ZeroMQ/Catch2 come in via FetchContent.
+  cpp-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build (hardware-free targets)
+        run: |
+          cmake --build build --target \
+            heimdall_tracker_tests heimdall_pose_tests \
+            heimdall_comm_tests heimdall_pose_buffer_tests
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Robot-side vendordep (Java) — JUnit tests for the solvers, proto codec, etc.
+  vendordep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Test
+        working-directory: vendordep
+        run: ./gradlew test --no-daemon

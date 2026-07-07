@@ -53,13 +53,24 @@ int main(int argc, char** argv) {
 
         DetectionProcessor processor(std::move(proc_cfg), output);
 
-        // Preload all poses before processing frames (no eviction risk)
-        for (const auto& p : rec.poses)
-            processor.push_pose(p);
-
-        // Replay frames in recorded order
-        for (const auto& frame : rec.frames)
-            processor.process(frame.dets);
+        // Replay causally (5.17): before each frame, push only the poses whose time is at or
+        // before that frame's capture time, so a frame never "sees" a pose that in live
+        // operation arrived after it. Poses are pushed in recorded order (sorted by time).
+        // Frames drive process() with their recorded capture time so empty-frame LOST/miss
+        // timing matches live instead of collapsing in a tight loop.
+        size_t pose_i = 0;
+        for (const auto& frame : rec.frames) {
+            const uint64_t frame_ns = frame.frame_capture_ns;
+            while (pose_i < rec.poses.size()
+                   && (frame_ns == 0 || rec.poses[pose_i].jetson_recv_ns <= frame_ns)) {
+                processor.push_pose(rec.poses[pose_i]);
+                ++pose_i;
+            }
+            processor.process(frame.dets, frame_ns);
+        }
+        // Flush any remaining poses (e.g. legacy recordings with no frame timestamps).
+        for (; pose_i < rec.poses.size(); ++pose_i)
+            processor.push_pose(rec.poses[pose_i]);
 
         std::printf("[replay] done → %s\n", out_path.c_str());
     } catch (const std::exception& e) {

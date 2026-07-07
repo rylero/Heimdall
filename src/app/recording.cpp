@@ -1,5 +1,6 @@
 #include "app/recording.h"
 #include <nlohmann/json.hpp>
+#include <chrono>
 #include <fstream>
 #include <stdexcept>
 
@@ -43,7 +44,21 @@ void RecordingWriter::write_frame(const std::vector<Detection>& dets) {
             {"cap_ns", d.capture_monotonic_ns},
         });
     }
-    json j = {{"t", "frame"}, {"dets", std::move(jdets)}};
+    // Frame-level capture time recorded on EVERY frame, including empty ones (5.17). Empty
+    // frames carry no Detection to hold the stamp, so their timing was previously
+    // unreconstructable → non-deterministic LOST/miss-timeout behaviour between live and replay.
+    // Non-empty: use the detections' capture time; empty: stamp now (steady_clock, the same
+    // domain the probe stamps captures in), which in the record path is ~the capture instant.
+    uint64_t frame_cap_ns;
+    if (!dets.empty()) {
+        frame_cap_ns = dets.front().capture_monotonic_ns;
+    } else {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        frame_cap_ns = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    }
+
+    json j = {{"t", "frame"}, {"cap_ns", frame_cap_ns}, {"dets", std::move(jdets)}};
     std::lock_guard<std::mutex> lk(mu_);
     file_ << j.dump() << '\n';
 }
@@ -72,6 +87,7 @@ RecordingData load_recording(const std::string& path) {
             data.poses.push_back(tp);
         } else if (t == "frame") {
             RecordedFrame frame;
+            frame.frame_capture_ns = j.value("cap_ns", uint64_t{0}); // 0 for legacy recordings
             for (const auto& jd : j.at("dets")) {
                 Detection d{};
                 d.camera_id            = jd.at("cam").get<int>();
