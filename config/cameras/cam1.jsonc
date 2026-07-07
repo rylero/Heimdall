@@ -1,6 +1,9 @@
 {
   "id": 0,
   "type": "usb",
+  // Prefer a stable by-id path over /dev/videoN — enumeration order can swap after a
+  // brownout/re-plug (§2D). Find it with `ls -l /dev/v4l/by-id/` and use e.g.
+  // "/dev/v4l/by-id/usb-<vendor>_<model>_<serial>-video-index0".
   "device": "/dev/video0",
   "width": 640,
   "height": 480,
