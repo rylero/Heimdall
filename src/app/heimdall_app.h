@@ -44,6 +44,9 @@ private:
     Config             config_;
     CommLayer          comm_;
     DeepStreamPipeline pipeline_;
+    // Declared before processor_: its address is handed to the processor's Config
+    // (healthy_flag), so it must be constructed first (member init order = declaration order).
+    std::atomic<bool>  pipeline_healthy_{true};
     DetectionProcessor processor_;
 
     std::unique_ptr<RecordingWriter> recorder_;
@@ -51,6 +54,7 @@ private:
     std::atomic<bool>  running_{false};
     std::atomic<bool>  stopped_{false};
     std::thread        pose_recv_thread_;
+    std::thread        watchdog_thread_;
 
     static constexpr int               kMaxDetQueue = 8;
     std::queue<std::vector<Detection>> det_queue_;
@@ -65,4 +69,5 @@ private:
     void det_worker_loop();
     void pose_recv_loop();
     void apriltag_loop();
+    void watchdog_loop();
 };
