@@ -244,6 +244,24 @@ struct AprilTagDetector::Impl {
         auto& r = layout.robot_to_camera;
         T_robot_cam = make_transform(r.x, r.y, r.z, r.roll, r.pitch, r.yaw);
 
+        // solvePnP returns the tag pose in the OpenCV optical frame (x-right, y-down,
+        // z-forward). The robot/field frame is x-forward, y-left, z-up, so a robot
+        // heading change is a rotation about robot-Z == optical-Y. Without converting
+        // between the two, atan2(R10,R00) reads heading out of the wrong axis and the
+        // recovered yaw stays ~constant as the robot turns. Bake the fixed optical->robot
+        // axis rotation into T_robot_cam so the recovered rotation lands in the robot
+        // frame; robot_to_camera stays physical (roll=pitch=yaw=0 => forward, upright).
+        // NOTE: sign/handedness not yet verified against a known tag (see 5.6) - if a CCW
+        // turn decreases yaw, the mount is mirrored; re-check corner order before trusting.
+        {
+            cv::Mat R_opt2robot = (cv::Mat_<double>(3, 3) <<
+                 0,  0, 1,
+                -1,  0, 0,
+                 0, -1, 0);
+            cv::Mat R_rc = T_robot_cam(cv::Rect(0, 0, 3, 3)).clone() * R_opt2robot;
+            R_rc.copyTo(T_robot_cam(cv::Rect(0, 0, 3, 3)));
+        }
+
 #ifdef HEIMDALL_APRILTAG_DEBUG_STREAM
         // Debug RTSP stream via GStreamer appsrc → x264enc → RTMP → MediaMTX.
         gst_init(nullptr, nullptr);
