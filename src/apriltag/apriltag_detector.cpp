@@ -51,6 +51,21 @@ static cv::Mat make_transform(double tx, double ty, double tz,
     return T;
 }
 
+// Tags are vertical and face the field direction given by `yaw` (roll/pitch add tilt).
+// make_transform alone leaves the tag lying flat (local +z = field +Z); R_base stands it
+// upright so local +z (the tag normal) points along the facing direction, letting the
+// config keep its documented convention: roll=pitch=0, yaw=azimuth for wall tags.
+static cv::Mat make_tag_transform(const TagPose& tp) {
+    cv::Mat T = make_transform(tp.x, tp.y, tp.z, tp.roll, tp.pitch, tp.yaw);
+    const cv::Mat R_base = (cv::Mat_<double>(3, 3) <<
+        0, 0, 1,
+        1, 0, 0,
+        0, 1, 0);
+    cv::Mat R = T(cv::Rect(0, 0, 3, 3)) * R_base;
+    R.copyTo(T(cv::Rect(0, 0, 3, 3)));
+    return T;
+}
+
 static double wrap_angle(double a) {
     while (a > M_PI)  a -= 2.0 * M_PI;
     while (a < -M_PI) a += 2.0 * M_PI;
@@ -393,7 +408,7 @@ struct AprilTagDetector::Impl {
         cv::Mat R_field_cam = Rz_yaw * R_robot_cam;
 
         // R_cam_tag = R_field_cam^T * R_field_tag
-        cv::Mat T_field_tag = make_transform(tp.x, tp.y, tp.z, tp.roll, tp.pitch, tp.yaw);
+        cv::Mat T_field_tag = make_tag_transform(tp);
         cv::Mat R_field_tag = T_field_tag(cv::Rect(0, 0, 3, 3));
         cv::Mat R_cam_tag   = R_field_cam.t() * R_field_tag;
 
@@ -473,7 +488,7 @@ struct AprilTagDetector::Impl {
         if (out_ambiguity) *out_ambiguity = ambiguity;
         if (ambiguity > layout.solver.ambiguity_max) return std::nullopt;
 
-        cv::Mat T_field_tag = make_transform(tp.x, tp.y, tp.z, tp.roll, tp.pitch, tp.yaw);
+        cv::Mat T_field_tag = make_tag_transform(tp);
 
         auto to_field_robot = [&](int s) -> cv::Mat {
             cv::Mat R; cv::Rodrigues(rvecs[s], R);
@@ -587,20 +602,17 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
     zarray_t* dets = apriltag_detector_detect(impl_->det, &img);
 
     const double hs = impl_->layout.tag_size_meters / 2.0;
-    // Tag corners in tag-local space, paired index-for-index with apriltag's d->p[].
-    // apriltag maps tag-normalized coords (-1,-1),(1,-1),(1,1),(-1,1) → p[0..3], which in a
-    // tag frame with +x right / +y up is bottom-left, bottom-right, top-right, top-left.
-    // The order below is TL,TR,BR,BL — the vertical mirror of that. It is consistent with the
-    // solve only if this camera's image y-axis convention flips it back; the yaw
-    // self-calibration converging in practice is evidence it lines up, but this has NOT been
-    // verified against a known tag at a measured pose. 5.6: verify with a static known-tag
-    // frame (cross-check PhotonVision/wpical ordering) before trusting absolute heading; a
-    // mismatch yields a low-reprojection but rotated/mirrored pose that looks "locked".
+    // Tag corners in tag-local space, paired index-for-index with apriltag d->p[].
+    // apriltag outputs p[0..3] as tag-normalized (-1,-1),(1,-1),(1,1),(-1,1) =
+    // BL,BR,TR,TL with +x right / +y up, so obj_pts must follow the same order (5.6).
+    // The previous TL,TR,BR,BL order was the vertical mirror and produced a reflected
+    // pose (right axis, flipped sign) that no tag-config rotation could fix. tag-local
+    // +z is the tag normal; make_tag_transform() aligns it to the facing direction.
     const std::vector<cv::Point3d> obj_pts = {
-        {-hs,  hs, 0},
-        { hs,  hs, 0},
-        { hs, -hs, 0},
-        {-hs, -hs, 0},
+        {-hs, -hs, 0},   // p0 bottom-left   (apriltag normalized (-1,-1))
+        { hs, -hs, 0},   // p1 bottom-right  ( 1,-1)
+        { hs,  hs, 0},   // p2 top-right     ( 1, 1)
+        {-hs,  hs, 0},   // p3 top-left      (-1, 1)
     };
 
     // Interpolate yaw once per frame (shared across all detected tags this frame)
