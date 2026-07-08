@@ -603,16 +603,15 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
 
     const double hs = impl_->layout.tag_size_meters / 2.0;
     // Tag corners in tag-local space, paired index-for-index with apriltag d->p[].
-    // apriltag outputs p[0..3] as tag-normalized (-1,-1),(1,-1),(1,1),(-1,1) =
-    // BL,BR,TR,TL with +x right / +y up, so obj_pts must follow the same order (5.6).
-    // The previous TL,TR,BR,BL order was the vertical mirror and produced a reflected
-    // pose (right axis, flipped sign) that no tag-config rotation could fix. tag-local
-    // +z is the tag normal; make_tag_transform() aligns it to the facing direction.
+    // This TL,TR,BR,BL order gives a markedly lower IPPE ambiguity than apriltag's
+    // nominal BL,BR,TR,TL, so it is kept. Any residual 180-deg heading/position flip is
+    // a proper rotation handled by each tag's yaw in the layout config, not a corner
+    // reorder (which reflects the pose and worsens the fit). See make_tag_transform().
     const std::vector<cv::Point3d> obj_pts = {
-        {-hs, -hs, 0},   // p0 bottom-left   (apriltag normalized (-1,-1))
-        { hs, -hs, 0},   // p1 bottom-right  ( 1,-1)
-        { hs,  hs, 0},   // p2 top-right     ( 1, 1)
-        {-hs,  hs, 0},   // p3 top-left      (-1, 1)
+        {-hs,  hs, 0},
+        { hs,  hs, 0},
+        { hs, -hs, 0},
+        {-hs, -hs, 0},
     };
 
     // Interpolate yaw once per frame (shared across all detected tags this frame)
