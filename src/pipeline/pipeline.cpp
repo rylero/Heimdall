@@ -289,9 +289,19 @@ gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
         case GST_MESSAGE_ERROR: {
             GError* err; gchar* dbg;
             gst_message_parse_error(msg, &err, &dbg);
-            g_printerr("Pipeline error: %s\n%s\n", err->message, dbg ? dbg : "");
+            // The RTMP debug/telemetry branch (rtmp_sink) is non-critical: if MediaMTX
+            // is down or restarts, log and keep the detection pipeline running instead
+            // of exiting, which under `restart: unless-stopped` would crash-loop (2D).
+            // The leaky queue upstream already keeps this branch from backpressuring
+            // inference; only errors from the core path are fatal.
+            GstObject* src = GST_MESSAGE_SRC(msg);
+            const gchar* name = src ? GST_OBJECT_NAME(src) : nullptr;
+            const bool from_debug_branch = name && g_str_has_prefix(name, "rtmp_sink");
+            g_printerr("Pipeline %s: %s\n%s\n",
+                       from_debug_branch ? "warning (debug RTMP, non-fatal)" : "error",
+                       err->message, dbg ? dbg : "");
             g_error_free(err); g_free(dbg);
-            if (self->loop_) g_main_loop_quit(self->loop_);
+            if (!from_debug_branch && self->loop_) g_main_loop_quit(self->loop_);
             break;
         }
         case GST_MESSAGE_EOS:
