@@ -11,7 +11,7 @@ std::string build_source_description(const CameraConfig& cfg) {
     // Force NVMM output so the handoff to nvstreammux (which wants NVMM) is explicit rather
     // than left to implicit negotiation (5.21).
     const std::string vidconv = " ! nvvidconv flip-method=" + std::to_string(flip)
-                              + " ! video/x-raw(memory:NVMM)";
+                              + " ! capsfilter caps=\"video/x-raw(memory:NVMM)\"";
 
     std::ostringstream ss;
     switch (cfg.type) {
