@@ -79,8 +79,14 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
             params.intrinsics.cx = static_cast<float>(cfg.width)  - 1.f - params.intrinsics.cx;
             params.intrinsics.fx = -params.intrinsics.fx;
         }
-        if (cfg.flip_v)
+        if (cfg.flip_v) {
+            // Same treatment as flip_h: mirroring py about the image center requires
+            // negating fy too, or (py-cy)/fy reproduces the wrong-signed vertical ray.
+            // For py_flipped = (height-1) - py_orig, matching the original
+            // (py_orig-cy)/fy via (py_flipped-cy_new)/fy_new needs fy_new = -fy.
             params.intrinsics.cy = static_cast<float>(cfg.height) - 1.f - params.intrinsics.cy;
+            params.intrinsics.fy = -params.intrinsics.fy;
+        }
 
         result.pipeline_cameras.push_back(cfg);
         result.pose_cameras.push_back(params);
