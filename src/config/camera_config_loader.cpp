@@ -71,21 +71,24 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
             extr.at("roll").get<float>()
         );
 
-        // Flips happen before nvinfer; adjust intrinsics for flipped bbox coords.
-        // flip_h: mirrors left/right → negate fx so u direction is correct.
-        // flip_v: mirrors top/bottom → mirror cy only (negating fy inverts
-        //         the vertical ray and causes close objects to project farther).
+        // Flips happen before nvinfer (camera_source.cpp); adjust intrinsics for flipped
+        // bbox coords. flip_h alone or flip_v alone is a true mirror (nvvidconv
+        // flip-method 4 or 6) — negate the corresponding focal length so (p-c)/f
+        // reproduces the original ray from the flipped pixel. But flip_h AND flip_v
+        // together is flip-method=2, a 180° ROTATION, not two composed mirrors: a
+        // rotation preserves parity, so neither focal length gets negated — only cx
+        // and cy mirror. Negating both (as if composing two independent mirrors) flips
+        // the sign of the vertical ray and makes closer objects project farther, which
+        // is what a real-world drive-test past a stationary object caught: the reported
+        // position moved away as the robot visibly approached.
+        const bool rotate_180 = cfg.flip_h && cfg.flip_v;
         if (cfg.flip_h) {
             params.intrinsics.cx = static_cast<float>(cfg.width)  - 1.f - params.intrinsics.cx;
-            params.intrinsics.fx = -params.intrinsics.fx;
+            if (!rotate_180) params.intrinsics.fx = -params.intrinsics.fx;
         }
         if (cfg.flip_v) {
-            // Same treatment as flip_h: mirroring py about the image center requires
-            // negating fy too, or (py-cy)/fy reproduces the wrong-signed vertical ray.
-            // For py_flipped = (height-1) - py_orig, matching the original
-            // (py_orig-cy)/fy via (py_flipped-cy_new)/fy_new needs fy_new = -fy.
             params.intrinsics.cy = static_cast<float>(cfg.height) - 1.f - params.intrinsics.cy;
-            params.intrinsics.fy = -params.intrinsics.fy;
+            if (!rotate_180) params.intrinsics.fy = -params.intrinsics.fy;
         }
 
         result.pipeline_cameras.push_back(cfg);
