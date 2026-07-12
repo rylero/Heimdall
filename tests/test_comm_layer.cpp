@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <chrono>
+#include <thread>
 #include <zmq.hpp>
 #include "comm/comm_layer.h"
 #include "heimdall.pb.h"
@@ -104,15 +106,26 @@ TEST_CASE("send_tracking_frame does not block or throw when no receiver is conne
 TEST_CASE("send_tracking_frame serializes and delivers detection frame", "[comm]") {
     CommLayer comm({"inproc://pose_send", "inproc://out_send", ""});
 
-    zmq::socket_t receiver(comm.context(), zmq::socket_type::pull);
+    // output_pub_sock_ is a PUB socket (comm_layer.cpp) — must be received with SUB,
+    // not PULL/PUSH. Was previously `pull`, which never matches PUB and hangs recv() forever.
+    zmq::socket_t receiver(comm.context(), zmq::socket_type::sub);
+    receiver.set(zmq::sockopt::subscribe, "");
     receiver.connect("inproc://out_send");
 
     TrackedObject obj{1, 3, 2.f, 5.f, 0.1f, -0.2f, 0.88f};
     TrackEvent ev{TrackEventType::CONFIRMED, obj};
-    comm.send_tracking_frame({ev}, 12345ULL, true);
 
+    // PUB/SUB subscription propagation is asynchronous even over inproc ("slow joiner"),
+    // so a single send right after connect() can race the subscription and be missed.
+    // Resend (idempotent — CONFLATE keeps only the latest) until the subscriber catches up.
     zmq::message_t msg;
-    REQUIRE(receiver.recv(msg, zmq::recv_flags::none));
+    bool received = false;
+    for (int attempt = 0; attempt < 200 && !received; ++attempt) {
+        comm.send_tracking_frame({ev}, 12345ULL, true);
+        received = static_cast<bool>(receiver.recv(msg, zmq::recv_flags::dontwait));
+        if (!received) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(received);
 
     heimdall::DetectionFrameMsg frame;
     REQUIRE(frame.ParseFromArray(msg.data(), static_cast<int>(msg.size())));
