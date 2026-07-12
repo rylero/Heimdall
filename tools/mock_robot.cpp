@@ -26,8 +26,10 @@ int main(int argc, char* argv[]) {
     zmq::socket_t push_sock(ctx, zmq::socket_type::push);
     push_sock.connect(pose_addr);
 
-    // PULL track events from Jetson PUSH (port 5556)
-    zmq::socket_t pull_sock(ctx, zmq::socket_type::pull);
+    // SUB track events from Jetson PUB (port 5556) — CommLayer binds output_pub_sock_
+    // as PUB (comm_layer.cpp), not PUSH, so the robot side must be SUB, not PULL.
+    zmq::socket_t pull_sock(ctx, zmq::socket_type::sub);
+    pull_sock.set(zmq::sockopt::subscribe, "");
     pull_sock.set(zmq::sockopt::rcvtimeo, 1);  // 1 ms receive timeout
     pull_sock.connect(output_addr);
 
