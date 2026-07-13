@@ -30,86 +30,38 @@ except ImportError:
     sys.exit("pip install pygame")
 
 
-# ── Linear algebra (no numpy) ─────────────────────────────────────────────────
+# ── Camera model (shared with sim_recording via tools/sim/projection.py) ──────
+# The forward camera model and config loading live in exactly one place now.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from sim import projection  # noqa: E402
 
-def mat3_mul(A, B):
-    C = [0.0]*9
-    for i in range(3):
-        for j in range(3):
-            for k in range(3):
-                C[i*3+j] += A[i*3+k]*B[k*3+j]
-    return C
-
-def mat3T(M):
-    return [M[0],M[3],M[6], M[1],M[4],M[7], M[2],M[5],M[8]]
-
-def mv(M, v):
-    return (M[0]*v[0]+M[1]*v[1]+M[2]*v[2],
-            M[3]*v[0]+M[4]*v[1]+M[5]*v[2],
-            M[6]*v[0]+M[7]*v[1]+M[8]*v[2])
-
-def rotation_from_euler(yaw, pitch, roll):
-    R_base = [0,0,1, -1,0,0, 0,-1,0]
-    cp, sp = math.cos(-pitch), math.sin(-pitch)
-    Rx = [1,0,0, 0,cp,-sp, 0,sp,cp]
-    cr, sr = math.cos(roll), math.sin(roll)
-    Rz_cam = [cr,-sr,0, sr,cr,0, 0,0,1]
-    cy, sy = math.cos(yaw), math.sin(yaw)
-    Rz_rob = [cy,-sy,0, sy,cy,0, 0,0,1]
-    return mat3_mul(Rz_rob, mat3_mul(mat3_mul(R_base, Rx), Rz_cam))
-
-
-# ── Camera config ─────────────────────────────────────────────────────────────
-
-def camera_sees_floor(cam):
-    return cam['R_rob_to_cam'][8] < -0.1
-
-def make_sim_cameras():
-    cams = []
-    for i, (tx, ty) in enumerate([(0.20, 0.15), (0.20, -0.15)]):
-        R = rotation_from_euler(0.0, math.radians(45.0), 0.0)
-        cams.append({'id': i, 'width': 640, 'height': 480,
-                     'fx': 600.0, 'fy': 600.0, 'cx': 320.0, 'cy': 240.0,
-                     'tx': tx, 'ty': ty, 'tz': 0.30,
-                     'R_rob_to_cam': mat3T(R)})
-    return cams
-
-def load_cameras(cam_dir):
-    def strip(t): return re.sub(r'//[^\n]*', '', t)
-    paths = sorted(os.path.join(cam_dir, f) for f in os.listdir(cam_dir) if f.endswith('.jsonc'))
-    cams = []
-    for p in paths:
-        with open(p, encoding='utf-8') as f:
-            cfg = json.loads(strip(f.read()))
-        intr, extr = cfg['intrinsics'], cfg['extrinsics']
-        R = rotation_from_euler(float(extr['yaw']), float(extr['pitch']), float(extr['roll']))
-        cams.append({'id': cfg['id'], 'width': cfg.get('width',640), 'height': cfg.get('height',480),
-                     'fx': float(intr['fx']), 'fy': float(intr['fy']),
-                     'cx': float(intr['cx']), 'cy': float(intr['cy']),
-                     'tx': float(extr['tx']), 'ty': float(extr['ty']), 'tz': float(extr['tz']),
-                     'R_rob_to_cam': mat3T(R)})
-    return cams
-
-
-# ── Fudge factor (mirrors pose_estimator.cpp) ────────────────────────────────
-_kA, _kB, _kC = -0.0658, 0.9637, 0.12
-
-def apply_fudge(fx, fy):
-    """Same correction as pose_estimator.cpp — applied after geometric projection."""
-    raw_d = math.hypot(fx, fy)
-    if raw_d < 0.01:
-        return fx, fy
-    corr_d = max(0.0, (_kA * raw_d + _kB) * raw_d + _kC)
-    s = corr_d / raw_d
-    return fx * s, fy * s
+mat3_mul           = projection.mat3_mul
+mat3T              = projection.mat3_transpose
+mv                 = projection.mat3_vec
+rotation_from_euler = projection.rotation_from_euler
+camera_sees_floor  = projection.camera_sees_floor
+make_sim_cameras   = projection.make_sim_cameras
+load_cameras       = projection.load_cameras
 
 
 # ── Projection: pixel -> field (mirrors pose_estimator.cpp) ──────────────────
+# Inverse of projection.field_to_pixel; used only by this visualizer.
 
 def pixel_to_field(cam, px, py, robot_x, robot_y, robot_heading):
-    """Unproject pixel to field ground plane, including fudge factor. Returns (fx, fy) or None."""
-    u = (px - cam['cx']) / cam['fx']
-    v = (py - cam['cy']) / cam['fy']
+    """Unproject pixel to field ground plane. Returns (fx, fy) or None.
+
+    Iteratively undistorts (Brown-Conrady) like pose_estimator.cpp so it inverts
+    projection.field_to_pixel's forward distortion."""
+    xd = (px - cam['cx']) / cam['fx']
+    yd = (py - cam['cy']) / cam['fy']
+    k1, k2, k3 = cam.get('k1', 0.0), cam.get('k2', 0.0), cam.get('k3', 0.0)
+    p1, p2 = cam.get('p1', 0.0), cam.get('p2', 0.0)
+    u, v = xd, yd
+    for _ in range(5):
+        r2 = u*u + v*v
+        rad = 1.0 + k1*r2 + k2*r2*r2 + k3*r2*r2*r2
+        u = (xd - 2.0*p1*u*v - p2*(r2 + 2.0*u*u)) / rad
+        v = (yd - p1*(r2 + 2.0*v*v) - 2.0*p2*u*v) / rad
 
     R_cam_rob = mat3T(cam['R_rob_to_cam'])
     d_rob = mv(R_cam_rob, (u, v, 1.0))

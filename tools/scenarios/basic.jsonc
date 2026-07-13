@@ -1,0 +1,42 @@
+{
+  // Baseline regression scene. A robot drives straight down +X at 0.4 m/s while
+  // a handful of static and moving "fuel" pieces pass through the cameras' view.
+  // Objects are placed at explicit field coordinates (no dependence on camera
+  // layout) so this scenario is a stable regression target.
+  "name": "basic",
+
+  // Simulation parameters (any of these may be overridden by CLI flags).
+  "duration": 10.0,   // seconds
+  "fps":      30.0,   // detection frame rate
+  "pose_hz":  50.0,   // robot pose publish rate
+  "noise":    5.0,    // pixel noise std-dev applied to detections
+  "conf":     0.85,   // base detection confidence
+  "seed":     42,
+
+  // Robot trajectory. "linear" drives along `heading` at `speed` (m/s).
+  "robot": { "type": "linear", "speed": 0.4, "heading": 0.0 },
+
+  // Fuel game pieces on the floor. Each: class_id, field x/y (m), optional
+  // velocity vx/vy (m/s) and radius (m, default 0.12).
+  "objects": [
+    { "class_id": 0, "x": 1.0, "y":  0.15 },
+    { "class_id": 0, "x": 1.0, "y": -0.15 },
+    { "class_id": 1, "x": 2.2, "y":  0.15 },
+    { "class_id": 1, "x": 2.2, "y": -0.15 },
+    { "class_id": 0, "x": 3.2, "y":  0.15 },
+    { "class_id": 0, "x": 3.2, "y": -0.15 },
+
+    // Moving: crosses the robot's path diagonally.
+    { "class_id": 1, "x": 1.4, "y": -0.6, "vx": 0.0, "vy": 0.25 },
+    // Moving: drifts parallel to the robot, slightly faster.
+    { "class_id": 2, "x": 0.4, "y": 0.075, "vx": 0.24, "vy": 0.0 },
+
+    // Close cluster: separated enough to be individually gatable.
+    { "class_id": 0, "x": 2.72, "y":  0.30 },
+    { "class_id": 0, "x": 2.92, "y": -0.30 }
+  ],
+
+  // AprilTags are recorded but NOT evaluated in v1 (tag image detection is a
+  // video-level concern). Carried so future renderers/metrics reuse this file.
+  "apriltags": []
+}
