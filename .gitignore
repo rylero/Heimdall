@@ -35,6 +35,16 @@ context-snapshot.json
 context-snapshot.md
 session-log.md
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/worktrees/
+
+# IDE / Eclipse project files (vendordep gradle)
+vendordep/.classpath
+vendordep/.project
+vendordep/.settings/
+
+# Tooling virtualenvs
+tools/.venv/
 
 # Docker exports and temp files
 *.tar

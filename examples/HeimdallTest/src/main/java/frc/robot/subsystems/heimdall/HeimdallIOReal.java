@@ -7,6 +7,7 @@ import com.heimdall.TrackEventType;
 import com.heimdall.TrackedObject;
 import com.heimdall.VisionPoseEstimate;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.wpilibj.Timer;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -20,6 +21,17 @@ public class HeimdallIOReal implements HeimdallIO {
   private final Map<Integer, TrackedObject> tracks = new LinkedHashMap<>();
   private long lastProcessedTimestampNs = -1;
   private String lastError = "";
+
+  // Estimated pipeline latency from image capture to robot receipt (seconds).
+  // Used to convert Jetson CLOCK_MONOTONIC timestamps to the FPGA time domain
+  // that WPILib's pose estimator expects.
+  private static final double PIPELINE_LATENCY_SECS = 0.10;
+
+  // The Jetson pipeline sends a tracking frame every cycle even when nothing is detected,
+  // so a healthy connection keeps timeSinceLastFrameSecs near zero. If it grows past this,
+  // the pipeline has died or restarted -- there is no "resync" message, so a crashed/restarted
+  // Jetson process leaves stale tracks in `tracks` forever unless we evict them ourselves.
+  private static final double STALE_CONNECTION_SECS = 1.0;
 
   public HeimdallIOReal(String jetsonHost, Supplier<Pose2d> poseSupplier) {
     this.client = new HeimdallClient(jetsonHost);
@@ -58,12 +70,20 @@ public class HeimdallIOReal implements HeimdallIO {
       inputs.aprilTagX = vpe.getX();
       inputs.aprilTagY = vpe.getY();
       inputs.aprilTagHeadingRad = vpe.getHeadingRad();
-      inputs.aprilTagTimestampSecs = vpe.getTimestampSecs();
+      // The timestamp from the Jetson is CLOCK_MONOTONIC (kernel boot time).
+      // WPILib's pose estimator expects FPGA time.  Approximate it by
+      // subtracting the estimated pipeline latency from current FPGA time.
+      inputs.aprilTagTimestampSecs = Timer.getFPGATimestamp() - PIPELINE_LATENCY_SECS;
     }
 
     inputs.connected = client.isHealthy();
     inputs.timeSinceLastFrameSecs = client.getTimeSinceLastFrameSecs();
     inputs.lastError = lastError;
+
+    if (inputs.timeSinceLastFrameSecs > STALE_CONNECTION_SECS) {
+      tracks.clear();
+    }
+
     inputs.objects =
         tracks.values().stream()
             .map(
