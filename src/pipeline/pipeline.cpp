@@ -166,12 +166,18 @@ void DeepStreamPipeline::build() {
     gst_object_unref(infer_src);
 
     // queue decouples nvstreammux's streaming thread from the encoding chain.
+    // leaky=2 (downstream) is essential (5.15): the detection probe sits on infer_src,
+    // *upstream* of this queue, so if the encode/RTMP chain stalls (MediaMTX restart,
+    // network hiccup) a non-leaky queue would backpressure through nvinfer and stop
+    // inference — i.e. stop detections. Leaking here lets the display branch drop frames
+    // instead of ever stalling the detection path.
     GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
     if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
     g_object_set(queue_post_infer,
         "max-size-buffers", 4u,
         "max-size-bytes",   0u,
         "max-size-time",    guint64(0),
+        "leaky",            2u,  // GST_QUEUE_LEAK_DOWNSTREAM
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
@@ -286,6 +292,13 @@ void DeepStreamPipeline::run() {
     gst_element_set_state(pipeline_, GST_STATE_PLAYING);
     loop_ = g_main_loop_new(nullptr, FALSE);
     g_main_loop_run(loop_);
+}
+
+void DeepStreamPipeline::restart() {
+    if (!pipeline_) return;
+    g_printerr("[pipeline] stall detected — cycling NULL→PLAYING to recover\n");
+    gst_element_set_state(pipeline_, GST_STATE_NULL);
+    gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 }
 
 void DeepStreamPipeline::stop() {

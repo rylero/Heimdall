@@ -6,6 +6,7 @@
 #include "pose/pose_estimator.h"
 #include "tracker/tracker.h"
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -22,6 +23,11 @@ public:
         std::string               log_path       = "logs/tracker_log.csv";
         std::string               snapshot_dir   = "logs/snapshots";
         size_t                    pose_buffer_capacity = PoseBuffer::N;
+        // Optional pipeline-health signal (owned externally, e.g. by HeimdallApp's stall
+        // watchdog). When null (replay/tests) health is reported healthy. When set, its
+        // value is forwarded on every tracking frame so the robot's isHealthy() can see a
+        // stall (5.16) instead of a hardcoded true.
+        const std::atomic<bool>*  healthy_flag = nullptr;
     };
 
     // output is owned externally (CommLayer in live mode, JsonlOutput in replay).
@@ -39,7 +45,8 @@ private:
                         const RobotPose& pose,
                         const std::vector<Detection>& dets,
                         const std::vector<FieldDetection>& field_dets,
-                        const std::vector<TrackEvent>& events);
+                        const std::vector<TrackEvent>& events,
+                        bool healthy);
 
     Config          config_;
     DetectionOutput& output_;
@@ -49,5 +56,6 @@ private:
     std::ofstream   log_file_;
     std::ofstream   debug_log_file_;
     uint64_t        last_timestamp_ns_ = 0;
+    std::chrono::steady_clock::time_point last_wall_time_ = std::chrono::steady_clock::now();
     std::atomic<bool> snapshot_requested_{false};
 };
