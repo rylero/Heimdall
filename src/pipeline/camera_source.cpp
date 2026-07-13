@@ -3,11 +3,12 @@
 #include <stdexcept>
 
 std::string build_source_description(const CameraConfig& cfg) {
-    // nvvidconv flip-method: 0=none, 4=horiz, 6=vert, 2=both(180°)
-    const int flip = (cfg.flip_h && cfg.flip_v) ? 2
-                   : cfg.flip_h                 ? 4
-                   : cfg.flip_v                 ? 6
-                                                : 0;
+    // nvvidconv flip-method (rotation only; no mirroring): 0=none, 1=ccw90, 2=180, 3=cw90.
+    // cfg.rotation is clockwise degrees, so 90 (cw) -> 3 and 270 (cw == 90 ccw) -> 1.
+    const int flip = (cfg.rotation == 180) ? 2
+                   : (cfg.rotation == 90)  ? 3
+                   : (cfg.rotation == 270) ? 1
+                                           : 0;
     // Force NVMM output so the handoff to nvstreammux (which wants NVMM) is explicit rather
     // than left to implicit negotiation (5.21).
     const std::string vidconv = " ! nvvidconv flip-method=" + std::to_string(flip)

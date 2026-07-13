@@ -1,8 +1,43 @@
 #include "pose_estimator.h"
+#include <algorithm>
 #include <cmath>
 
 PoseEstimator::PoseEstimator(std::vector<CameraParams> cameras)
     : cameras_(std::move(cameras)) {}
+
+// Map a detection bbox (in the rotated frame nvinfer processed) to its ground-contact pixel
+// (bottom-center of the object) in the native calibration frame. cam.rotation is the clockwise
+// rotation the pipeline applied; W/H are the native frame dims. The four inverse maps below take
+// a rotated pixel back to native coords. Since 0/90/180/270 send axis-aligned boxes to
+// axis-aligned boxes, transforming the corners and taking native (mid-x, max-y) is exact.
+static void ground_contact_native(const Detection& det, const CameraParams& cam,
+                                   float& out_px, float& out_py) {
+    if (cam.rotation == 0) {                    // fast path: no rotation
+        out_px = det.left + det.width / 2.f;
+        out_py = det.top  + det.height;
+        return;
+    }
+    const float W = static_cast<float>(cam.width);
+    const float H = static_cast<float>(cam.height);
+    const float xs[4] = {det.left, det.left + det.width, det.left,               det.left + det.width};
+    const float ys[4] = {det.top,  det.top,              det.top + det.height,   det.top + det.height};
+
+    float minx = 1e30f, maxx = -1e30f, maxy = -1e30f;
+    for (int i = 0; i < 4; ++i) {
+        float xn, yn;
+        switch (cam.rotation) {
+            case 90:  xn = ys[i];         yn = (H - 1.f) - xs[i]; break;  // ccw-inverse of cw90
+            case 180: xn = (W - 1.f) - xs[i]; yn = (H - 1.f) - ys[i]; break;
+            case 270: xn = (W - 1.f) - ys[i]; yn = xs[i];         break;
+            default:  xn = xs[i];         yn = ys[i];             break;
+        }
+        minx = std::min(minx, xn);
+        maxx = std::max(maxx, xn);
+        maxy = std::max(maxy, yn);
+    }
+    out_px = 0.5f * (minx + maxx);  // bottom-center x in native frame
+    out_py = maxy;                  // ground contact = lowest edge in native frame
+}
 
 bool PoseEstimator::project_pixel(int camera_id,
                                    float px, float py,
@@ -64,9 +99,14 @@ std::vector<FieldDetection> PoseEstimator::project(
         if (det.camera_id < 0 || det.camera_id >= static_cast<int>(cameras_.size()))
             continue;
 
-        // Bottom-center of bounding box = ground contact point
-        const float px = det.left + det.width  / 2.f;
-        const float py = det.top  + det.height;
+        // Detections come from nvinfer, which ran on the rotated frame. Un-rotate the bbox
+        // back into the native calibration frame (which the intrinsics describe), then take
+        // bottom-center = ground contact there. Doing it here — rather than fudging the
+        // intrinsics per-flip — keeps one clean transform and always picks the correct edge:
+        // "bottom of the bbox in the rotated frame" is the object's head, not its feet, once
+        // the image is rotated 180°.
+        float px, py;
+        ground_contact_native(det, cameras_[static_cast<size_t>(det.camera_id)], px, py);
 
         float fx, fy;
         if (!project_pixel(det.camera_id, px, py, robot_pose, fx, fy))

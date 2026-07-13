@@ -7,8 +7,8 @@
   "fps": 60,
   "hw_decode": false,
   "mirror_of": -1,
-  "flip_h": true,
-  "flip_v": true,
+  // Camera is mounted upside-down; rotate 180° before nvinfer. Only 0/90/180/270 allowed.
+  "rotation": 180,
   "intrinsics": {
     "fx": 544.3636,
     "fy": 545.4340,

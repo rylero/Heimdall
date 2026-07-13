@@ -15,8 +15,8 @@
   // "pixel_format": "image/jpeg",
   // "io_mode": 2,
   "mirror_of": -1,
-  "flip_h": true,
-  "flip_v": true,
+  // Camera is mounted upside-down; rotate 180° before nvinfer. Only 0/90/180/270 allowed.
+  "rotation": 180,
   "intrinsics": {
     "fx": 539.8783,
     "fy": 541.1769,

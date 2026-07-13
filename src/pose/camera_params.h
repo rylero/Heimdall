@@ -17,6 +17,12 @@ struct CameraExtrinsics {
 struct CameraParams {
     CameraIntrinsics intrinsics;
     CameraExtrinsics extrinsics;
+    // Clockwise rotation (0/90/180/270) the pipeline applied before nvinfer. Detections arrive
+    // in that rotated frame; projection un-rotates them back into the native calibration frame
+    // (which intrinsics describe) before unprojecting. width/height are the native frame dims.
+    int rotation = 0;
+    int width    = 0;
+    int height   = 0;
 };
 
 // Robot position and heading in field frame (WPiLib standard coordinates).

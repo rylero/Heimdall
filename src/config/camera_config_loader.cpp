@@ -43,14 +43,21 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         cfg.fps       = j.value("fps",       60);
         cfg.hw_decode = j.value("hw_decode", true);
         cfg.mirror_of = j.value("mirror_of", -1);
-        cfg.flip_h    = j.value("flip_h", false);
-        cfg.flip_v    = j.value("flip_v", false);
+        cfg.rotation  = j.value("rotation", 0);
         cfg.pixel_format = j.value("pixel_format", std::string("image/jpeg"));
         cfg.io_mode      = j.value("io_mode", 2);
 
         if (cfg.width <= 0 || cfg.height <= 0 || cfg.fps <= 0)
             throw std::runtime_error("camera " + p.string() +
                 ": width/height/fps must be positive");
+        if (cfg.rotation != 0 && cfg.rotation != 90 &&
+            cfg.rotation != 180 && cfg.rotation != 270)
+            throw std::runtime_error("camera " + p.string() +
+                ": rotation must be one of 0, 90, 180, 270 (got " +
+                std::to_string(cfg.rotation) + ")");
+        if (j.contains("flip_h") || j.contains("flip_v"))
+            throw std::runtime_error("camera " + p.string() +
+                ": flip_h/flip_v are no longer supported — use \"rotation\": 0|90|180|270");
 
         const auto& intr = j.at("intrinsics");
         const auto& extr = j.at("extrinsics");
@@ -77,25 +84,14 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
             extr.at("roll").get<float>()
         );
 
-        // Flips happen before nvinfer (camera_source.cpp); adjust intrinsics for flipped
-        // bbox coords. flip_h alone or flip_v alone is a true mirror (nvvidconv
-        // flip-method 4 or 6) — negate the corresponding focal length so (p-c)/f
-        // reproduces the original ray from the flipped pixel. But flip_h AND flip_v
-        // together is flip-method=2, a 180° ROTATION, not two composed mirrors: a
-        // rotation preserves parity, so neither focal length gets negated — only cx
-        // and cy mirror. Negating both (as if composing two independent mirrors) flips
-        // the sign of the vertical ray and makes closer objects project farther, which
-        // is what a real-world drive-test past a stationary object caught: the reported
-        // position moved away as the robot visibly approached.
-        const bool rotate_180 = cfg.flip_h && cfg.flip_v;
-        if (cfg.flip_h) {
-            params.intrinsics.cx = static_cast<float>(cfg.width)  - 1.f - params.intrinsics.cx;
-            if (!rotate_180) params.intrinsics.fx = -params.intrinsics.fx;
-        }
-        if (cfg.flip_v) {
-            params.intrinsics.cy = static_cast<float>(cfg.height) - 1.f - params.intrinsics.cy;
-            if (!rotate_180) params.intrinsics.fy = -params.intrinsics.fy;
-        }
+        // Intrinsics are calibrated on the raw (native) camera feed and are left untouched.
+        // The pipeline rotates the frame before nvinfer, so detections arrive rotated; the
+        // pose estimator un-rotates each bbox back into this native frame (using rotation +
+        // width/height) before unprojecting. This keeps flip-adjustment sign bugs out of the
+        // intrinsics entirely — no focal-length negation, no principal-point mirroring.
+        params.rotation = cfg.rotation;
+        params.width    = cfg.width;
+        params.height   = cfg.height;
 
         result.pipeline_cameras.push_back(cfg);
         result.pose_cameras.push_back(params);
