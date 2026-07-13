@@ -72,7 +72,7 @@ def make_sim_cameras():
         R = rotation_from_euler(0.0, pitch, 0.0)
         cameras.append({
             'id':           i,
-            'width':        640, 'height': 480,
+            'width':        640, 'height': 480, 'rotation': 0,
             'fx': 600.0, 'fy': 600.0, 'cx': 320.0, 'cy': 240.0,
             'k1': 0.0, 'k2': 0.0, 'p1': 0.0, 'p2': 0.0, 'k3': 0.0,  # ideal pinhole
             'tx': tx, 'ty': ty, 'tz': 0.30,
@@ -107,10 +107,13 @@ def load_cameras(cam_dir):
         cx = float(intr['cx']);  cy = float(intr['cy'])
         w  = cfg.get('width', 640);  h = cfg.get('height', 480)
 
-        if cfg.get('flip_h', False):
-            cx = w - 1.0 - cx;  fx = -fx
-        if cfg.get('flip_v', False):
-            cy = h - 1.0 - cy
+        # Intrinsics stay native (calibrated on the raw feed). The pipeline rotates the frame
+        # before nvinfer, so the sim forward-projects to native pixels then rotates the bbox
+        # into the nvinfer frame (see field_to_pixel); the C++ un-rotates it back. This mirrors
+        # camera_config_loader.cpp, which no longer fudges intrinsics for flips.
+        rotation = int(cfg.get('rotation', 0))
+        if rotation not in (0, 90, 180, 270):
+            raise RuntimeError(f"{path}: rotation must be 0/90/180/270 (got {rotation})")
 
         # Brown-Conrady distortion coefficients (the C++ pose_estimator undistorts
         # with these, so the sim must forward-distort with them for the round-trip
@@ -119,7 +122,7 @@ def load_cameras(cam_dir):
         R = rotation_from_euler(float(extr['yaw']), float(extr['pitch']), float(extr['roll']))
         cameras.append({
             'id': cfg['id'],
-            'width': w, 'height': h,
+            'width': w, 'height': h, 'rotation': rotation,
             'fx': fx, 'fy': fy, 'cx': cx, 'cy': cy,
             'k1': float(dist.get('k1', 0.0)), 'k2': float(dist.get('k2', 0.0)),
             'p1': float(dist.get('p1', 0.0)), 'p2': float(dist.get('p2', 0.0)),
@@ -202,4 +205,26 @@ def field_to_pixel(cam, robot_x, robot_y, robot_heading, obj_x, obj_y, obj_radiu
     if left + w < 0 or left > cam['width'] or top + h < 0 or top > cam['height']:
         return None
 
-    return (left, top, w, h)
+    # Emit the bbox in the nvinfer (rotated) frame, matching what the real pipeline feeds the
+    # detector. The C++ pose estimator un-rotates it back (ground_contact_native), closing the
+    # round-trip. This is the forward of that inverse map.
+    return _rotate_bbox_native_to_frame(cam, left, top, w, h)
+
+
+def _rotate_bbox_native_to_frame(cam, left, top, w, h):
+    """Rotate a native-frame bbox into the pipeline's rotated (nvinfer) frame.
+    Forward of pose_estimator.cpp::ground_contact_native's inverse map; keeps boxes
+    axis-aligned for 0/90/180/270."""
+    rot = cam.get('rotation', 0)
+    if rot == 0:
+        return (left, top, w, h)
+    W = float(cam['width']);  H = float(cam['height'])
+    corners = [(left, top), (left + w, top), (left, top + h), (left + w, top + h)]
+    pts = []
+    for xn, yn in corners:
+        if rot == 90:     xr, yr = (H - 1.0) - yn, xn            # native -> cw90 frame
+        elif rot == 180:  xr, yr = (W - 1.0) - xn, (H - 1.0) - yn
+        else:             xr, yr = yn, (W - 1.0) - xn            # 270
+        pts.append((xr, yr))
+    xs = [p[0] for p in pts];  ys = [p[1] for p in pts]
+    return (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))

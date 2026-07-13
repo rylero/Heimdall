@@ -85,14 +85,14 @@ def grid_points(extent: float, spacing: float):
     return pts, xs, ys
 
 
-def _flip_code(flip_h: bool, flip_v: bool) -> int | None:
-    if flip_h and flip_v:
-        return -1
-    if flip_h:
-        return 1
-    if flip_v:
-        return 0
-    return None
+def _rotate_code(rotation: int) -> int | None:
+    """Map a config rotation (clockwise degrees, 0/90/180/270) to a cv2.rotate code, so the
+    preview matches the rotated frame the pipeline feeds nvinfer. Flips are not supported."""
+    return {
+        90:  cv2.ROTATE_90_CLOCKWISE,
+        180: cv2.ROTATE_180,
+        270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+    }.get(rotation)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -303,7 +303,7 @@ def main():
         sys.exit(1)
 
     h, w = frame.shape[:2]
-    flip_code = _flip_code(cfg.get("flip_h", False), cfg.get("flip_v", False))
+    rotate_code = _rotate_code(int(cfg.get("rotation", 0)))
     read_tb = init_trackbars(cfg)
 
     # Undistortion map cache (keyed by trackbar state tuple)
@@ -320,8 +320,8 @@ def main():
         # ── read controls ──
         v = read_tb()
 
-        if flip_code is not None:
-            frame = cv2.flip(frame, flip_code)
+        if rotate_code is not None:
+            frame = cv2.rotate(frame, rotate_code)
 
         K = build_K(v["fx"], v["fy"], v["cx"], v["cy"])
         dist = build_dist(v["k1"], v["k2"], v["p1"], v["p2"], v["k3"])
