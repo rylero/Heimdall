@@ -14,6 +14,11 @@ struct CameraConfig {
     bool        hw_decode = true; // false: use CPU jpegdec (Orin Nano has 1 NvJPEG unit)
     bool        flip_h    = false;
     bool        flip_v    = false;
+    // v4l2src source caps + buffer mode for USB cameras (5.21). pixel_format is the source
+    // media type: "image/jpeg" (MJPEG, decoded) or a raw type like "video/x-raw,format=YUY2"
+    // (no decoder). io_mode: 2=MMAP (default), 4=userptr, 1=RW — some cameras misbehave on MMAP.
+    std::string pixel_format = "image/jpeg";
+    int         io_mode      = 2;
 };
 
 std::string build_source_description(const CameraConfig& config);

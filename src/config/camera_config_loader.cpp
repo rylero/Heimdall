@@ -45,6 +45,12 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         cfg.mirror_of = j.value("mirror_of", -1);
         cfg.flip_h    = j.value("flip_h", false);
         cfg.flip_v    = j.value("flip_v", false);
+        cfg.pixel_format = j.value("pixel_format", std::string("image/jpeg"));
+        cfg.io_mode      = j.value("io_mode", 2);
+
+        if (cfg.width <= 0 || cfg.height <= 0 || cfg.fps <= 0)
+            throw std::runtime_error("camera " + p.string() +
+                ": width/height/fps must be positive");
 
         const auto& intr = j.at("intrinsics");
         const auto& extr = j.at("extrinsics");

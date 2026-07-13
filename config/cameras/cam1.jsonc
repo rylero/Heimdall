@@ -9,6 +9,11 @@
   "height": 480,
   "fps": 60,
   "hw_decode": false,
+  // Optional v4l2src knobs (defaults shown). pixel_format is the source caps media type:
+  // "image/jpeg" (MJPEG, decoded) or a raw type like "video/x-raw,format=YUY2" (no decoder).
+  // io_mode: 2=MMAP (default), 4=userptr, 1=RW — try another if a camera misbehaves on MMAP.
+  // "pixel_format": "image/jpeg",
+  // "io_mode": 2,
   "mirror_of": -1,
   "flip_h": true,
   "flip_v": true,
