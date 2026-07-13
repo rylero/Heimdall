@@ -432,7 +432,8 @@ struct AprilTagDetector::Impl {
         uint64_t capture_ns,
         cv::Mat* out_rvec = nullptr,
         cv::Mat* out_tvec = nullptr,
-        double*  out_ambiguity = nullptr)
+        double*  out_ambiguity = nullptr,
+        double*  out_reproj = nullptr)
     {
         std::vector<cv::Mat> rvecs, tvecs;
         std::vector<double>  errors;
@@ -477,8 +478,9 @@ struct AprilTagDetector::Impl {
         double yaw = std::atan2(T_field_robot.at<double>(1, 0),
                                 T_field_robot.at<double>(0, 0));
 
-        if (out_rvec) *out_rvec = rvecs[sol];
-        if (out_tvec) *out_tvec = tvecs[sol];
+        if (out_rvec)   *out_rvec = rvecs[sol];
+        if (out_tvec)   *out_tvec = tvecs[sol];
+        if (out_reproj) *out_reproj = (sol < static_cast<int>(errors.size())) ? errors[sol] : 0.0;
 
         return VisionPoseResult{rx, ry, yaw, capture_ns};
     }
@@ -638,6 +640,11 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
             result = impl_->constrained_pnp(it->second, corrected_yaw, img_pts, obj_pts, capture_ns,
                                             &td.rvec, &td.tvec);
             if (result) {
+                result->solve_mode       = 0;  // gyro-constrained
+                result->ambiguity        = 0.0;
+                result->tag_count        = 1;
+                result->avg_tag_distance = td.tvec.empty() ? 0.0 : cv::norm(td.tvec);
+                result->reproj_error     = 0.0;  // linear solve — no per-point reprojection error
                 td.method   = "constrained";
                 td.has_pose = true;
                 std::fprintf(stderr, "[apriltag] tag %d constrained solve ok (%.2f,%.2f) yaw=%.2f\n",
@@ -647,9 +654,15 @@ std::optional<VisionPoseResult> AprilTagDetector::detect() {
 
         if (!result) {
             double ambiguity = 0.0;
+            double reproj    = 0.0;
             result = impl_->ippe_pnp(it->second, img_pts, obj_pts, capture_ns,
-                                     &td.rvec, &td.tvec, &ambiguity);
+                                     &td.rvec, &td.tvec, &ambiguity, &reproj);
             if (result) {
+                result->solve_mode       = 1;  // IPPE fallback
+                result->ambiguity        = ambiguity;
+                result->tag_count        = 1;
+                result->avg_tag_distance = td.tvec.empty() ? 0.0 : cv::norm(td.tvec);
+                result->reproj_error     = reproj;
                 td.method   = impl_->layout.force_unconstrained_solver ? "IPPE(forced)" : "IPPE";
                 td.has_pose = true;
                 std::fprintf(stderr, "[apriltag] tag %d IPPE (%.2f,%.2f) yaw=%.2f amb=%.3f\n",

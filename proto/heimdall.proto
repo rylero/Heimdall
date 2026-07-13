@@ -1,12 +1,18 @@
 syntax = "proto3";
 package heimdall;
 
+// Wire-format version. Bump when a message's field semantics change incompatibly.
+// Every top-level message carries proto_version so the vendordep jar and the Jetson
+// image can detect a skew instead of silently mis-parsing (§2F). Kept in sync with
+// PROTO_VERSION in the C++ (proto_version.h) and Java (ProtoVersion.java) constants.
+
 message RobotPoseMsg {
     float  x            = 1;
     float  y            = 2;
     float  heading      = 3;
-    uint64 timestamp_ns = 4;
+    uint64 timestamp_ns = 4;  // robot clock (monotonic); used only for Jetson clock-offset estimation
     float  vyaw         = 5;  // angular velocity rad/s (CCW positive), for constrained PnP
+    uint32 proto_version = 15;
 }
 
 message TrackedObjectMsg {
@@ -36,6 +42,7 @@ message DetectionFrameMsg {
     repeated TrackEventMsg events       = 1;
     uint64                 timestamp_ns = 2;
     bool                   healthy      = 3;
+    uint32                 proto_version = 15;
 }
 
 // Vision-based robot pose estimate derived from AprilTag detection on the Jetson.
@@ -44,5 +51,21 @@ message VisionPoseMsg {
     float  x            = 1;
     float  y            = 2;
     float  heading      = 3;
-    uint64 timestamp_ns = 4;
+    uint64 timestamp_ns = 4;  // capture time (Jetson CLOCK_MONOTONIC); prefer latency_ns for the FPGA stamp
+
+    // Age of this estimate at send time, ns = (jetson_now_monotonic − capture_time). The robot
+    // converts to its own timebase with fpgaTimestampSec = Timer.getFPGATimestamp() − latency,
+    // which is what addVisionMeasurement() wants — no Jetson↔robot clock sync needed (§2A.1).
+    uint64 latency_ns   = 5;
+
+    // Quality metadata for dynamic std devs on addVisionMeasurement (§2B). Without these a lone
+    // distant ambiguous tag is trusted equally to a close multi-tag solve — the classic FRC
+    // pose-jump failure.
+    uint32 tag_count         = 6;   // tags used in this solve
+    float  avg_tag_distance  = 7;   // mean tag distance, meters
+    float  reproj_error      = 8;   // mean reprojection error, px
+    float  ambiguity         = 9;   // IPPE ambiguity ratio (0 = unambiguous); 0 for constrained solve
+    uint32 solve_mode        = 10;  // 0 = gyro-constrained, 1 = IPPE fallback
+
+    uint32 proto_version = 15;
 }
