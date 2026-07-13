@@ -40,8 +40,14 @@ public final class HeimdallClient implements AutoCloseable {
     public static final int DEFAULT_DETECTION_PORT  = 5556;
     public static final int DEFAULT_VISION_POSE_PORT = 5558;
 
-    // Jetson healthy timeout: if no frame arrives within this many ms, isHealthy() → false.
-    private static final long STALE_FRAME_MS = 500;
+    // Jetson healthy timeout: if no frame arrives within this window, isHealthy() → false.
+    // Measured with System.nanoTime() (monotonic) — NOT wall-clock — so a DS/NTP time jump
+    // on the rio can't flap health (§2E).
+    private static final long STALE_FRAME_NS = 500_000_000L; // 500 ms
+
+    // IO-loop wait budget. Bounds the added latency on a queued pose to this many ms
+    // (was effectively the old 5 ms detection recv timeout, see ioLoop/5.3).
+    private static final long POLL_TIMEOUT_MS = 2;
 
     private final String jetsonHost;
     private final int posePort;
@@ -55,7 +61,7 @@ public final class HeimdallClient implements AutoCloseable {
 
     // IO thread writes; main thread reads.
     private final AtomicReference<DetectionFrame>    latestFrame     = new AtomicReference<>();
-    private final AtomicLong                         lastFrameMs     = new AtomicLong(0);
+    private final AtomicLong                         lastFrameNs     = new AtomicLong(0); // System.nanoTime()
     private final AtomicReference<VisionPoseEstimate> latestVisionPose = new AtomicReference<>();
 
     private volatile boolean running = true;
@@ -134,13 +140,13 @@ public final class HeimdallClient implements AutoCloseable {
     public boolean isHealthy() {
         DetectionFrame f = latestFrame.get();
         return f != null && f.isHealthy()
-                && (System.currentTimeMillis() - lastFrameMs.get()) < STALE_FRAME_MS;
+                && (System.nanoTime() - lastFrameNs.get()) < STALE_FRAME_NS;
     }
 
     /** Seconds since the last detection frame was received. Returns {@link Double#MAX_VALUE} before first frame. */
     public double getTimeSinceLastFrameSecs() {
-        long last = lastFrameMs.get();
-        return last == 0 ? Double.MAX_VALUE : (System.currentTimeMillis() - last) / 1000.0;
+        long last = lastFrameNs.get();
+        return last == 0 ? Double.MAX_VALUE : (System.nanoTime() - last) / 1e9;
     }
 
     /** Whether the background IO thread is alive (does NOT mean the Jetson is reachable). */
@@ -167,19 +173,30 @@ public final class HeimdallClient implements AutoCloseable {
         ZMQ.Socket push        = zmqCtx.createSocket(SocketType.PUSH);
         ZMQ.Socket trackSub    = zmqCtx.createSocket(SocketType.SUB);
         ZMQ.Socket visionSub   = zmqCtx.createSocket(SocketType.SUB);
+        ZMQ.Poller poller      = zmqCtx.createPoller(2);
         try {
             push.connect("tcp://" + jetsonHost + ":" + posePort);
 
-            trackSub.setReceiveTimeOut(5); // 5 ms poll timeout
+            // Conflate: keep only the newest message per sub, matching the Jetson PUB's
+            // latest-value design so a momentary stall reads fresh data, not stale backlog
+            // (5.4). Must be set before connect. Non-blocking recv; the Poller does the wait.
+            trackSub.setConflate(true);
+            trackSub.setReceiveTimeOut(0);
             trackSub.connect("tcp://" + jetsonHost + ":" + detectionPort);
-            trackSub.subscribe(new byte[0]); // subscribe to all messages
+            trackSub.subscribe(new byte[0]);
 
-            visionSub.setReceiveTimeOut(0); // non-blocking
+            visionSub.setConflate(true);
+            visionSub.setReceiveTimeOut(0);
             visionSub.connect("tcp://" + jetsonHost + ":" + visionPosePort);
             visionSub.subscribe(new byte[0]);
 
+            poller.register(trackSub, ZMQ.Poller.POLLIN);
+            poller.register(visionSub, ZMQ.Poller.POLLIN);
+
             while (running) {
-                // 1. Drain pending pose — take the most recent one, discard older.
+                // 1. Send the pending pose FIRST, every iteration — the send path is no longer
+                //    gated behind a blocking detection recv (5.3). Previously a pose set just
+                //    after recv() started waited the full 5 ms poll timeout before leaving.
                 PoseSnapshot pose = pendingPose.getAndSet(null);
                 if (pose != null) {
                     byte[] bytes = ProtoWriter.serializeRobotPose(
@@ -188,24 +205,29 @@ public final class HeimdallClient implements AutoCloseable {
                     push.send(bytes, ZMQ.DONTWAIT);
                 }
 
-                // 2. Receive latest detection frame (blocks up to 5 ms; PUB drops stale).
-                byte[] data = trackSub.recv(0);
-                if (data != null && data.length > 0) {
-                    try {
-                        DetectionFrame frame = ProtoReader.parseDetectionFrame(data);
-                        latestFrame.set(frame);
-                        lastFrameMs.set(System.currentTimeMillis());
-                    } catch (Exception ignored) {
-                        // malformed message — drop silently
+                // 2. Wait for either sub, but wake often enough to keep pose latency low.
+                //    A new pose set during this poll waits at most POLL_TIMEOUT_MS, not 5 ms.
+                poller.poll(POLL_TIMEOUT_MS);
+
+                if (poller.pollin(0)) {
+                    byte[] data = trackSub.recv(ZMQ.DONTWAIT);
+                    if (data != null && data.length > 0) {
+                        try {
+                            latestFrame.set(ProtoReader.parseDetectionFrame(data));
+                            lastFrameNs.set(System.nanoTime());
+                        } catch (Exception ignored) {
+                            // malformed message — drop silently
+                        }
                     }
                 }
 
-                // 3. Poll vision pose (non-blocking).
-                byte[] vdata = visionSub.recv(ZMQ.DONTWAIT);
-                if (vdata != null && vdata.length > 0) {
-                    try {
-                        latestVisionPose.set(ProtoReader.parseVisionPose(vdata));
-                    } catch (Exception ignored) {}
+                if (poller.pollin(1)) {
+                    byte[] vdata = visionSub.recv(ZMQ.DONTWAIT);
+                    if (vdata != null && vdata.length > 0) {
+                        try {
+                            latestVisionPose.set(ProtoReader.parseVisionPose(vdata));
+                        } catch (Exception ignored) {}
+                    }
                 }
             }
         } catch (org.zeromq.ZMQException e) {

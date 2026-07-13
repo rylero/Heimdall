@@ -25,14 +25,29 @@ DeepStreamPipeline::~DeepStreamPipeline() {
 void DeepStreamPipeline::build() {
     gst_init(nullptr, nullptr);
 
+    // The per-slot probe arrays (s_cam_slots, s_decode_done_ns) are fixed-size 8; guard against
+    // an out-of-bounds user_data write if more cameras are ever configured (5.22).
+    if (cameras_.empty())
+        throw std::runtime_error("no cameras configured");
+    if (cameras_.size() > 8)
+        throw std::runtime_error("at most 8 cameras supported (fixed-size probe slot arrays)");
+
+    // Mux/tiler dimensions from the MAX camera resolution, not camera[0] — cameras may differ
+    // and assuming uniform resolution crops the larger ones (5.22).
+    int max_w = 0, max_h = 0;
+    for (const auto& c : cameras_) {
+        if (c.width  > max_w) max_w = c.width;
+        if (c.height > max_h) max_h = c.height;
+    }
+
     pipeline_ = gst_pipeline_new("heimdall");
     if (!pipeline_) throw std::runtime_error("Failed to create pipeline");
 
     GstElement* mux = gst_element_factory_make("nvstreammux", "mux");
     if (!mux) throw std::runtime_error("Failed to create nvstreammux");
     g_object_set(mux,
-        "width",                static_cast<gint>(cameras_[0].width),
-        "height",               static_cast<gint>(cameras_[0].height),
+        "width",                static_cast<gint>(max_w),
+        "height",               static_cast<gint>(max_h),
         "batch-size",           static_cast<gint>(cameras_.size()),
         "batched-push-timeout", 1000000,
         "live-source",          TRUE,
@@ -166,12 +181,18 @@ void DeepStreamPipeline::build() {
     gst_object_unref(infer_src);
 
     // queue decouples nvstreammux's streaming thread from the encoding chain.
+    // leaky=2 (downstream) is essential (5.15): the detection probe sits on infer_src,
+    // *upstream* of this queue, so if the encode/RTMP chain stalls (MediaMTX restart,
+    // network hiccup) a non-leaky queue would backpressure through nvinfer and stop
+    // inference — i.e. stop detections. Leaking here lets the display branch drop frames
+    // instead of ever stalling the detection path.
     GstElement* queue_post_infer = gst_element_factory_make("queue", "queue_post_infer");
     if (!queue_post_infer) throw std::runtime_error("Failed to create queue");
     g_object_set(queue_post_infer,
         "max-size-buffers", 4u,
         "max-size-bytes",   0u,
         "max-size-time",    guint64(0),
+        "leaky",            2u,  // GST_QUEUE_LEAK_DOWNSTREAM
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), queue_post_infer);
 
@@ -183,8 +204,8 @@ void DeepStreamPipeline::build() {
     g_object_set(tiler,
         "rows",    static_cast<guint>(tiler_rows),
         "columns", static_cast<guint>(tiler_cols),
-        "width",   static_cast<guint>(cameras_[0].width  * tiler_cols),
-        "height",  static_cast<guint>(cameras_[0].height * tiler_rows),
+        "width",   static_cast<guint>(max_w * tiler_cols),
+        "height",  static_cast<guint>(max_h * tiler_rows),
         nullptr);
     gst_bin_add(GST_BIN(pipeline_), tiler);
 
@@ -268,9 +289,19 @@ gboolean DeepStreamPipeline::bus_cb(GstBus*, GstMessage* msg, gpointer data) {
         case GST_MESSAGE_ERROR: {
             GError* err; gchar* dbg;
             gst_message_parse_error(msg, &err, &dbg);
-            g_printerr("Pipeline error: %s\n%s\n", err->message, dbg ? dbg : "");
+            // The RTMP debug/telemetry branch (rtmp_sink) is non-critical: if MediaMTX
+            // is down or restarts, log and keep the detection pipeline running instead
+            // of exiting, which under `restart: unless-stopped` would crash-loop (2D).
+            // The leaky queue upstream already keeps this branch from backpressuring
+            // inference; only errors from the core path are fatal.
+            GstObject* src = GST_MESSAGE_SRC(msg);
+            const gchar* name = src ? GST_OBJECT_NAME(src) : nullptr;
+            const bool from_debug_branch = name && g_str_has_prefix(name, "rtmp_sink");
+            g_printerr("Pipeline %s: %s\n%s\n",
+                       from_debug_branch ? "warning (debug RTMP, non-fatal)" : "error",
+                       err->message, dbg ? dbg : "");
             g_error_free(err); g_free(dbg);
-            if (self->loop_) g_main_loop_quit(self->loop_);
+            if (!from_debug_branch && self->loop_) g_main_loop_quit(self->loop_);
             break;
         }
         case GST_MESSAGE_EOS:
@@ -286,6 +317,13 @@ void DeepStreamPipeline::run() {
     gst_element_set_state(pipeline_, GST_STATE_PLAYING);
     loop_ = g_main_loop_new(nullptr, FALSE);
     g_main_loop_run(loop_);
+}
+
+void DeepStreamPipeline::restart() {
+    if (!pipeline_) return;
+    g_printerr("[pipeline] stall detected — cycling NULL→PLAYING to recover\n");
+    gst_element_set_state(pipeline_, GST_STATE_NULL);
+    gst_element_set_state(pipeline_, GST_STATE_PLAYING);
 }
 
 void DeepStreamPipeline::stop() {

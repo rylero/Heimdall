@@ -21,7 +21,8 @@ private:
 
 // Parses a recording produced by RecordingWriter into ordered poses + frames.
 struct RecordedFrame {
-    std::vector<Detection> dets; // may be empty (heartbeat frame)
+    std::vector<Detection> dets;               // may be empty (heartbeat frame)
+    uint64_t               frame_capture_ns = 0; // frame-level capture time, incl. empty frames (5.17)
 };
 
 struct RecordingData {

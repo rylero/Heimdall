@@ -1,11 +1,19 @@
 {
   "id": 0,
   "type": "usb",
+  // Prefer a stable by-id path over /dev/videoN — enumeration order can swap after a
+  // brownout/re-plug (§2D). Find it with `ls -l /dev/v4l/by-id/` and use e.g.
+  // "/dev/v4l/by-id/usb-<vendor>_<model>_<serial>-video-index0".
   "device": "/dev/video0",
   "width": 640,
   "height": 480,
   "fps": 60,
   "hw_decode": false,
+  // Optional v4l2src knobs (defaults shown). pixel_format is the source caps media type:
+  // "image/jpeg" (MJPEG, decoded) or a raw type like "video/x-raw,format=YUY2" (no decoder).
+  // io_mode: 2=MMAP (default), 4=userptr, 1=RW — try another if a camera misbehaves on MMAP.
+  // "pixel_format": "image/jpeg",
+  // "io_mode": 2,
   "mirror_of": -1,
   "flip_h": true,
   "flip_v": true,

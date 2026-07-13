@@ -22,7 +22,8 @@ public final class VelocityObstacleAvoider {
      * @param adjusted false if the preferred velocity was already collision-free
      *                 and is returned unchanged; true if it had to be replaced —
      *                 either with the closest collision-free alternative found, or
-     *                 with a full stop (0, 0) if no sampled candidate was safe
+     *                 (if no candidate was collision-free) with the least-bad
+     *                 candidate that maximizes clearance
      */
     public record AvoidanceResult(double vx, double vy, boolean adjusted) {
     }
@@ -39,28 +40,40 @@ public final class VelocityObstacleAvoider {
     public static boolean isVelocitySafe(FieldPoint robotPos, double vx, double vy,
                                           FieldPoint obstaclePos, double obsVx, double obsVy,
                                           double combinedRadius, double timeHorizonSeconds) {
+        double clearanceSq = closestApproachSq(robotPos, vx, vy, obstaclePos,
+                obsVx, obsVy, timeHorizonSeconds);
+        return clearanceSq > combinedRadius * combinedRadius;
+    }
+
+    /**
+     * Squared closest-approach distance between the robot (traveling {@code (vx,vy)} from
+     * {@code robotPos}) and the obstacle over {@code [0, timeHorizonSeconds]}. Smaller =
+     * nearer miss; used both for the safety test and to rank "least-bad" fallbacks.
+     */
+    public static double closestApproachSq(FieldPoint robotPos, double vx, double vy,
+                                           FieldPoint obstaclePos, double obsVx, double obsVy,
+                                           double timeHorizonSeconds) {
         double relVx = vx - obsVx;
         double relVy = vy - obsVy;
         double relPx = obstaclePos.x() - robotPos.x();
         double relPy = obstaclePos.y() - robotPos.y();
 
         double relSpeedSq = relVx * relVx + relVy * relVy;
-        double radiusSq = combinedRadius * combinedRadius;
 
         if (relSpeedSq < 1e-12) {
-            // No relative motion: only unsafe if already overlapping.
-            return relPx * relPx + relPy * relPy > radiusSq;
+            // No relative motion: distance is just the current separation.
+            return relPx * relPx + relPy * relPy;
         }
 
         // Time of closest approach along the relative-velocity ray, clamped to
         // [0, horizon] — approaches in the past (diverging) or beyond the trusted
-        // prediction horizon don't count as collisions.
+        // prediction horizon don't count.
         double t = (relPx * relVx + relPy * relVy) / relSpeedSq;
         t = Math.max(0.0, Math.min(timeHorizonSeconds, t));
 
         double closestPx = relPx - relVx * t;
         double closestPy = relPy - relVy * t;
-        return closestPx * closestPx + closestPy * closestPy > radiusSq;
+        return closestPx * closestPx + closestPy * closestPy;
     }
 
     /**
@@ -73,50 +86,65 @@ public final class VelocityObstacleAvoider {
             double preferredVx, double preferredVy, double maxSpeed,
             List<TrackedObject> obstacles, double combinedRadius, double timeHorizonSeconds) {
 
-        if (isSafeAgainstAll(robotPos, preferredVx, preferredVy,
-                obstacles, combinedRadius, timeHorizonSeconds)) {
+        final double radiusSq = combinedRadius * combinedRadius;
+
+        if (minClearanceSq(robotPos, preferredVx, preferredVy, obstacles, timeHorizonSeconds) > radiusSq) {
             return new AvoidanceResult(preferredVx, preferredVy, false);
         }
 
-        double bestVx = 0.0;
-        double bestVy = 0.0;
-        double bestCost = Double.POSITIVE_INFINITY;
+        // Among all sampled candidates track two things: the collision-free one closest to
+        // the preferred velocity, and — if NONE is safe — the "least-bad" one that maximizes
+        // clearance. A full stop (0,0) is NOT assumed safe (5.18): a moving obstacle can hit a
+        // stationary robot, so it is evaluated as just another candidate. Falling back to the
+        // max-clearance velocity lets the robot dodge instead of sitting still and getting hit.
+        double bestVx = 0.0, bestVy = 0.0, bestCost = Double.POSITIVE_INFINITY;
+        boolean anySafe = false;
 
-        for (int s = 0; s < SPEED_LEVELS; s++) {
-            double speed = maxSpeed * (s + 1) / SPEED_LEVELS;
-            for (int a = 0; a < ANGLE_STEPS; a++) {
+        double fbVx = 0.0, fbVy = 0.0, fbClearance = Double.NEGATIVE_INFINITY;
+
+        for (int s = 0; s <= SPEED_LEVELS; s++) {
+            // s == 0 → speed 0 (the full-stop candidate, evaluated once at angle 0).
+            double speed = maxSpeed * s / SPEED_LEVELS;
+            int angleSteps = (s == 0) ? 1 : ANGLE_STEPS;
+            for (int a = 0; a < angleSteps; a++) {
                 double angle = 2.0 * Math.PI * a / ANGLE_STEPS;
                 double vx = speed * Math.cos(angle);
                 double vy = speed * Math.sin(angle);
 
-                if (!isSafeAgainstAll(robotPos, vx, vy, obstacles, combinedRadius, timeHorizonSeconds)) {
-                    continue;
-                }
-
-                double dvx = vx - preferredVx;
-                double dvy = vy - preferredVy;
-                double cost = dvx * dvx + dvy * dvy;
-                if (cost < bestCost) {
-                    bestCost = cost;
-                    bestVx = vx;
-                    bestVy = vy;
+                double clearance = minClearanceSq(robotPos, vx, vy, obstacles, timeHorizonSeconds);
+                if (clearance > radiusSq) {
+                    double dvx = vx - preferredVx;
+                    double dvy = vy - preferredVy;
+                    double cost = dvx * dvx + dvy * dvy;
+                    if (cost < bestCost) {
+                        bestCost = cost;
+                        bestVx = vx;
+                        bestVy = vy;
+                        anySafe = true;
+                    }
+                } else if (clearance > fbClearance) {
+                    fbClearance = clearance;
+                    fbVx = vx;
+                    fbVy = vy;
                 }
             }
         }
 
-        // If no sample was safe, bestVx/bestVy remain (0, 0) — a full stop, the safe default.
-        return new AvoidanceResult(bestVx, bestVy, true);
+        return anySafe
+                ? new AvoidanceResult(bestVx, bestVy, true)
+                : new AvoidanceResult(fbVx, fbVy, true);  // least-bad, not a blind stop
     }
 
-    private static boolean isSafeAgainstAll(FieldPoint robotPos, double vx, double vy,
-            List<TrackedObject> obstacles, double combinedRadius, double timeHorizonSeconds) {
+    /** Minimum closest-approach (squared) over all obstacles; +inf when there are none. */
+    private static double minClearanceSq(FieldPoint robotPos, double vx, double vy,
+            List<TrackedObject> obstacles, double timeHorizonSeconds) {
+        double min = Double.POSITIVE_INFINITY;
         for (TrackedObject obstacle : obstacles) {
             FieldPoint obstaclePos = new FieldPoint(obstacle.getX(), obstacle.getY());
-            if (!isVelocitySafe(robotPos, vx, vy, obstaclePos,
-                    obstacle.getVx(), obstacle.getVy(), combinedRadius, timeHorizonSeconds)) {
-                return false;
-            }
+            double d = closestApproachSq(robotPos, vx, vy, obstaclePos,
+                    obstacle.getVx(), obstacle.getVy(), timeHorizonSeconds);
+            if (d < min) min = d;
         }
-        return true;
+        return min;
     }
 }

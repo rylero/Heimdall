@@ -51,7 +51,9 @@ public final class ProtoReader {
     public static VisionPoseEstimate parseVisionPose(byte[] data) {
         ByteBuffer buf = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         float x = 0, y = 0, heading = 0;
-        long  timestampNs = 0;
+        long  timestampNs = 0, latencyNs = 0;
+        int   tagCount = 0, solveMode = 0, version = 0;
+        float avgTagDistance = 0, reprojError = 0, ambiguity = 0;
 
         while (buf.hasRemaining()) {
             long tag     = readVarint(buf);
@@ -59,14 +61,23 @@ public final class ProtoReader {
             int  wireType = (int)(tag & 0x7);
 
             switch (field) {
-                case 1: x           = buf.getFloat();   break;
-                case 2: y           = buf.getFloat();   break;
-                case 3: heading     = buf.getFloat();   break;
-                case 4: timestampNs = readVarint(buf);  break;
-                default: skipField(buf, wireType);       break;
+                case 1:  x              = buf.getFloat();        break;
+                case 2:  y              = buf.getFloat();        break;
+                case 3:  heading        = buf.getFloat();        break;
+                case 4:  timestampNs    = readVarint(buf);       break;
+                case 5:  latencyNs      = readVarint(buf);       break;
+                case 6:  tagCount       = (int) readVarint(buf); break;
+                case 7:  avgTagDistance = buf.getFloat();        break;
+                case 8:  reprojError    = buf.getFloat();        break;
+                case 9:  ambiguity      = buf.getFloat();        break;
+                case 10: solveMode      = (int) readVarint(buf); break;
+                case 15: version        = (int) readVarint(buf); break;
+                default: skipField(buf, wireType);                break;
             }
         }
-        return new VisionPoseEstimate(x, y, heading, timestampNs);
+        checkVersion(version);
+        return new VisionPoseEstimate(x, y, heading, timestampNs, latencyNs,
+                tagCount, avgTagDistance, reprojError, ambiguity, solveMode);
     }
 
     public static DetectionFrame parseDetectionFrame(byte[] data) {
@@ -74,6 +85,7 @@ public final class ProtoReader {
         List<TrackEvent> events = new ArrayList<>();
         long timestampNs = 0;
         boolean healthy = false; // proto3 default for bool
+        int version = 0;
 
         while (buf.hasRemaining()) {
             long tag = readVarint(buf);
@@ -82,10 +94,7 @@ public final class ProtoReader {
 
             switch (field) {
                 case 1: { // repeated TrackEventMsg
-                    int len = (int) readVarint(buf);
-                    byte[] embedded = new byte[len];
-                    buf.get(embedded);
-                    events.add(parseTrackEvent(embedded));
+                    events.add(parseTrackEvent(readLengthDelimited(buf)));
                     break;
                 }
                 case 2: // timestamp_ns
@@ -94,12 +103,28 @@ public final class ProtoReader {
                 case 3: // healthy
                     healthy = readVarint(buf) != 0;
                     break;
+                case 15: // proto_version
+                    version = (int) readVarint(buf);
+                    break;
                 default:
                     skipField(buf, wireType);
                     break;
             }
         }
+        checkVersion(version);
         return new DetectionFrame(events, timestampNs, healthy);
+    }
+
+    // Warn once if the Jetson's wire version differs from this jar's (§2F). Field defaults to 0
+    // when absent (older Jetson image); only a non-zero mismatch is flagged.
+    private static volatile boolean versionWarned = false;
+    private static void checkVersion(int version) {
+        if (version != 0 && version != ProtoVersion.PROTO_VERSION && !versionWarned) {
+            versionWarned = true;
+            System.err.println("[heimdall] proto version skew: Jetson=" + version
+                    + " vendordep=" + ProtoVersion.PROTO_VERSION
+                    + " — update the jar or Jetson image to match.");
+        }
     }
 
     private static TrackEvent parseTrackEvent(byte[] data) {
@@ -121,10 +146,7 @@ public final class ProtoReader {
                     break;
                 }
                 case 2: { // TrackedObjectMsg
-                    int len = (int) readVarint(buf);
-                    byte[] embedded = new byte[len];
-                    buf.get(embedded);
-                    obj = parseTrackedObject(embedded);
+                    obj = parseTrackedObject(readLengthDelimited(buf));
                     break;
                 }
                 default:
@@ -159,6 +181,21 @@ public final class ProtoReader {
             }
         }
         return new TrackedObject(trackId, classId, x, y, vx, vy, ax, ay, confidence);
+    }
+
+    /**
+     * Reads a length-delimited field, validating the length prefix against the bytes
+     * actually remaining before allocating (5.20). A corrupt/truncated frame could
+     * otherwise request up to ~2 GB from an untrusted varint length.
+     */
+    private static byte[] readLengthDelimited(ByteBuffer buf) {
+        int len = (int) readVarint(buf);
+        if (len < 0 || len > buf.remaining())
+            throw new IllegalArgumentException(
+                "proto length-delimited field length out of range: " + len);
+        byte[] out = new byte[len];
+        buf.get(out);
+        return out;
     }
 
     private static long readVarint(ByteBuffer buf) {

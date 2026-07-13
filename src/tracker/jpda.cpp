@@ -55,7 +55,7 @@ std::vector<int> jpda_update(
             if (std::sqrt(dx*dx + dy*dy) >= cfg.gate_distance) continue;
             float maha = (dx*dx) / s00 + (dy*dy) / s11;
             if (min_maha < 0.f || maha < min_maha) min_maha = maha;
-            if (maha > MAHALANOBIS_GATE_THRESHOLD) continue;  // statistically incompatible -- leave L=0
+            if (maha > cfg.mahalanobis_gate) continue;  // statistically incompatible -- leave L=0
             L[i][j] = norm * std::exp(-0.5f * maha);
         }
         if (min_maha >= 0.f) tracks[i].dbg_maha = min_maha;
@@ -77,17 +77,33 @@ std::vector<int> jpda_update(
         float innov_x    = 0.f;
         float innov_y    = 0.f;
         float total_beta = 0.f;
+        float sum_bxx    = 0.f;   // Σ β_j νx_j²   — for the spread-of-innovations term
+        float sum_byy    = 0.f;   // Σ β_j νy_j²
+        float sum_bxy    = 0.f;   // Σ β_j νx_j νy_j
 
         for (int j = 0; j < m; ++j) {
             if (beta[i][j] <= 0.f) continue;
-            innov_x    += beta[i][j] * (detections[j].x - tracks[i].state[0]);
-            innov_y    += beta[i][j] * (detections[j].y - tracks[i].state[1]);
+            const float nx = detections[j].x - tracks[i].state[0];
+            const float ny = detections[j].y - tracks[i].state[1];
+            innov_x    += beta[i][j] * nx;
+            innov_y    += beta[i][j] * ny;
+            sum_bxx    += beta[i][j] * nx * nx;
+            sum_byy    += beta[i][j] * ny * ny;
+            sum_bxy    += beta[i][j] * nx * ny;
             total_beta += beta[i][j];
         }
 
         tracks[i].dbg_beta = total_beta;
 
-        kalman_update_combined(tracks[i], innov_x, innov_y, total_beta, kp);
+        // Spread of innovations M = Σ β_j ν_j ν_jᵀ − ν̄ ν̄ᵀ. Widens the posterior when the
+        // track is torn between multiple gated detections — the term standard PDAF/JPDAF
+        // includes and whose omission collapsed P to zero on long/ambiguous tracks (5.2).
+        const float spread_xx = sum_bxx - innov_x * innov_x;
+        const float spread_yy = sum_byy - innov_y * innov_y;
+        const float spread_xy = sum_bxy - innov_x * innov_y;
+
+        kalman_update_combined(tracks[i], innov_x, innov_y, total_beta, kp,
+                               spread_xx, spread_xy, spread_yy);
         tracks[i].last_update_s = timestamp_s;
 
         if (total_beta > 0.f) {
@@ -98,12 +114,23 @@ std::vector<int> jpda_update(
         }
     }
 
-    // 5. Unassociated detections: no track gated this detection (sum L == 0)
-    std::vector<int> unassociated;
-    for (int j = 0; j < m; ++j) {
-        float total_L = 0.f;
-        for (int i = 0; i < n; ++i) total_L += L[i][j];
-        if (total_L == 0.f) unassociated.push_back(j);
+    // 5. Spawn candidates. A detection is "claimed" if it is the single best-gated
+    //    (max-likelihood) detection of at least one track. Everything else is a spawn
+    //    candidate: detections outside every gate, AND detections that are gated but are
+    //    no track's primary match — i.e. a second object sharing one track's gate.
+    //    Fixes 5.19: the old rule (sum L == 0) only spawned fully-ungated detections, so
+    //    two objects inside one gate lost a track until they separated beyond it.
+    std::vector<char> claimed(m, 0);
+    for (int i = 0; i < n; ++i) {
+        int   best_j = -1;
+        float best_L = 0.f;
+        for (int j = 0; j < m; ++j)
+            if (L[i][j] > best_L) { best_L = L[i][j]; best_j = j; }
+        if (best_j >= 0) claimed[best_j] = 1;
     }
+
+    std::vector<int> unassociated;
+    for (int j = 0; j < m; ++j)
+        if (!claimed[j]) unassociated.push_back(j);
     return unassociated;
 }

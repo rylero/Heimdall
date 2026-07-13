@@ -5,6 +5,7 @@ import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
 import frc.robot.generated.COMPTunerConstants;
+import frc.robot.generated.Mk4nSpareTunerConstants;
 import frc.robot.generated.PRACTICETunerConstants;
 import frc.robot.generated.RobotTunerConstants;
 import org.littletonrobotics.junction.Logger;
@@ -19,6 +20,7 @@ public class RobotIdentity {
   public enum RobotType {
     COMP_BOT,
     PRACTICE_BOT,
+    MK4N
   }
 
   public static final String COMP_RIO_SERIAL = "032B1F73";
@@ -32,7 +34,7 @@ public class RobotIdentity {
         return RobotType.PRACTICE_BOT;
       default:
         serialNumberAlert.set(true);
-        return RobotType.COMP_BOT;
+        return RobotType.MK4N;
     }
   }
 
@@ -56,6 +58,9 @@ public class RobotIdentity {
       case PRACTICE_BOT:
         cached = fromPractice();
         break;
+      case MK4N:
+        cached = fromMK4N();
+        break;
     }
 
     return cached;
@@ -69,6 +74,16 @@ public class RobotIdentity {
         COMPTunerConstants.BackLeft,
         COMPTunerConstants.BackRight,
         COMPTunerConstants.kSpeedAt12Volts);
+  }
+
+  private static RobotTunerConstants fromMK4N() {
+    return new RobotTunerConstants(
+        Mk4nSpareTunerConstants.DrivetrainConstants,
+        Mk4nSpareTunerConstants.FrontLeft,
+        Mk4nSpareTunerConstants.FrontRight,
+        Mk4nSpareTunerConstants.BackLeft,
+        Mk4nSpareTunerConstants.BackRight,
+        Mk4nSpareTunerConstants.kSpeedAt12Volts);
   }
 
   private static RobotTunerConstants fromPractice() {

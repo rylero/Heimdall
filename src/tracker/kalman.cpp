@@ -16,7 +16,8 @@ void kalman_predict_cp(Track& track, double dt_d, const KalmanParams& kp) {
     P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
 }
 
-void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
+void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp,
+                      float spread_xx, float spread_xy, float spread_yy) {
     if (total_weight <= 0.f) return;
     constexpr int N = 2;
     auto& x = track.state;
@@ -44,6 +45,14 @@ void kalman_update_cp(Track& track, float innov_x, float innov_y, float total_we
     for (int i = 0; i < N; ++i)
         for (int j = 0; j < N; ++j)
             P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
+
+    // JPDAF spread-of-innovations: P += K * M * K^T  (M = [[xx,xy],[xy,yy]])
+    for (int i = 0; i < N; ++i) {
+        const float km0 = K[i][0] * spread_xx + K[i][1] * spread_xy;
+        const float km1 = K[i][0] * spread_xy + K[i][1] * spread_yy;
+        for (int j = 0; j < N; ++j)
+            P[i*N+j] += km0 * K[j][0] + km1 * K[j][1];
+    }
 }
 
 // ─── Constant-Velocity (CV) — renamed from original kalman_predict/update ───
@@ -80,9 +89,15 @@ void kalman_predict_cv(Track& track, double dt_d, const KalmanParams& kp) {
 
     P[0*N+0] = std::max(P[0*N+0], kp.pos_cov_floor);
     P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
+    // Floor the velocity variances too (5.9): otherwise repeated updates ossify the
+    // velocity estimate on long-lived tracks and a suddenly-maneuvering object is
+    // tracked with a stiff, stale velocity until it is dropped.
+    P[2*N+2] = std::max(P[2*N+2], kp.pos_cov_floor);
+    P[3*N+3] = std::max(P[3*N+3], kp.pos_cov_floor);
 }
 
-void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
+void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp,
+                      float spread_xx, float spread_xy, float spread_yy) {
     if (total_weight <= 0.f) return;
     constexpr int N = 4;
     auto& x = track.state;
@@ -110,6 +125,14 @@ void kalman_update_cv(Track& track, float innov_x, float innov_y, float total_we
     for (int i = 0; i < N; ++i)
         for (int j = 0; j < N; ++j)
             P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
+
+    // JPDAF spread-of-innovations: P += K * M * K^T
+    for (int i = 0; i < N; ++i) {
+        const float km0 = K[i][0] * spread_xx + K[i][1] * spread_xy;
+        const float km1 = K[i][0] * spread_xy + K[i][1] * spread_yy;
+        for (int j = 0; j < N; ++j)
+            P[i*N+j] += km0 * K[j][0] + km1 * K[j][1];
+    }
 }
 
 // ─── Constant-Acceleration (CA) ──────────────────────────────────────────────
@@ -167,9 +190,15 @@ void kalman_predict_ca(Track& track, double dt_d, const KalmanParams& kp) {
 
     P[0*N+0] = std::max(P[0*N+0], kp.pos_cov_floor);
     P[1*N+1] = std::max(P[1*N+1], kp.pos_cov_floor);
+    // Floor velocity + acceleration variances too (5.9).
+    P[2*N+2] = std::max(P[2*N+2], kp.pos_cov_floor);
+    P[3*N+3] = std::max(P[3*N+3], kp.pos_cov_floor);
+    P[4*N+4] = std::max(P[4*N+4], kp.pos_cov_floor);
+    P[5*N+5] = std::max(P[5*N+5], kp.pos_cov_floor);
 }
 
-void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
+void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp,
+                      float spread_xx, float spread_xy, float spread_yy) {
     if (total_weight <= 0.f) return;
     constexpr int N = 6;
     auto& x = track.state;
@@ -197,6 +226,14 @@ void kalman_update_ca(Track& track, float innov_x, float innov_y, float total_we
     for (int i = 0; i < N; ++i)
         for (int j = 0; j < N; ++j)
             P[i*N+j] -= total_weight * (K[i][0] * p0[j] + K[i][1] * p1[j]);
+
+    // JPDAF spread-of-innovations: P += K * M * K^T
+    for (int i = 0; i < N; ++i) {
+        const float km0 = K[i][0] * spread_xx + K[i][1] * spread_xy;
+        const float km1 = K[i][0] * spread_xy + K[i][1] * spread_yy;
+        for (int j = 0; j < N; ++j)
+            P[i*N+j] += km0 * K[j][0] + km1 * K[j][1];
+    }
 }
 
 // ─── Dispatchers ─────────────────────────────────────────────────────────────
@@ -209,11 +246,12 @@ void kalman_predict(Track& track, double dt, const KalmanParams& kp) {
     }
 }
 
-void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp) {
+void kalman_update_combined(Track& track, float innov_x, float innov_y, float total_weight, const KalmanParams& kp,
+                            float spread_xx, float spread_xy, float spread_yy) {
     switch (track.model) {
-        case FilterModel::CONSTANT_POSITION:     kalman_update_cp(track, innov_x, innov_y, total_weight, kp); break;
-        case FilterModel::CONSTANT_VELOCITY:     kalman_update_cv(track, innov_x, innov_y, total_weight, kp); break;
-        case FilterModel::CONSTANT_ACCELERATION: kalman_update_ca(track, innov_x, innov_y, total_weight, kp); break;
+        case FilterModel::CONSTANT_POSITION:     kalman_update_cp(track, innov_x, innov_y, total_weight, kp, spread_xx, spread_xy, spread_yy); break;
+        case FilterModel::CONSTANT_VELOCITY:     kalman_update_cv(track, innov_x, innov_y, total_weight, kp, spread_xx, spread_xy, spread_yy); break;
+        case FilterModel::CONSTANT_ACCELERATION: kalman_update_ca(track, innov_x, innov_y, total_weight, kp, spread_xx, spread_xy, spread_yy); break;
     }
 }
 

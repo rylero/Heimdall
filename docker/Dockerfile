@@ -28,6 +28,7 @@ RUN mkdir -p src/tracker src/pose src/comm src/pipeline src/app \
           src/comm/comm_layer.cpp \
           src/pipeline/camera_source.cpp src/pipeline/probe.cpp src/pipeline/pipeline.cpp \
           src/app/heimdall_app.cpp src/app/detection_processor.cpp \
+          src/app/snapshot.cpp \
           src/app/output_jsonl.cpp src/app/recording.cpp src/app/replay_main.cpp \
           src/main.cpp src/config/app_config_loader.cpp \
           src/apriltag/tag_layout.cpp src/apriltag/apriltag_detector.cpp \

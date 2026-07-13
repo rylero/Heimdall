@@ -5,6 +5,8 @@ services:
       dockerfile: docker/Dockerfile
     runtime: nvidia
     privileged: true
+    # Restart on crash/brownout so a mid-match failure recovers without SSH (§2D).
+    restart: unless-stopped
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - GST_PLUGIN_PATH=/usr/local/lib/gstreamer-1.0-host

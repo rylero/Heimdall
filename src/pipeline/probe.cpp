@@ -9,6 +9,10 @@ static std::atomic<int>      s_frame_count{0};
 static std::atomic<uint64_t> s_infer_entry_ns{0};   // mux src → nvinfer entry
 static std::atomic<uint64_t> s_decode_done_ns[8];   // per-camera: frame arrived at mux sink
 
+uint64_t pipeline_frame_count() {
+    return static_cast<uint64_t>(s_frame_count.load(std::memory_order_relaxed));
+}
+
 GstPadProbeReturn decode_done_probe_cb(GstPad*, GstPadProbeInfo*, gpointer user_data) {
     using clk = std::chrono::steady_clock;
     const int slot = *static_cast<int*>(user_data);
@@ -77,14 +81,19 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
     NvDsBatchMeta* batch = gst_buffer_get_nvds_batch_meta(buf);
     if (!batch) return GST_PAD_PROBE_OK;
 
-    const GstClockTime base_time = 0;
+    // Capture-time stamp for this batch. buf_pts is GStreamer *running-time* (ns since the
+    // pipeline hit PLAYING, ~0-based) — a different clock domain from PoseBuffer's keys, which
+    // are steady_clock::now() (absolute CLOCK_MONOTONIC, ns-since-boot). Matching one against
+    // the other made PoseBuffer::closest() always return the oldest pose (5.14). Stamp with
+    // the probe's steady_clock time instead: the same domain as jetson_recv_ns, off true
+    // capture only by the (small) decode+infer latency. now_ns is one instant for the whole
+    // batch, which is correct — all cameras in a batch share a capture instant.
+    const uint64_t capture_ns = now_ns;
 
     std::vector<Detection> detections;
 
     for (auto* lf = batch->frame_meta_list; lf; lf = lf->next) {
         auto* frame = static_cast<NvDsFrameMeta*>(lf->data);
-        const uint64_t capture_ns = static_cast<uint64_t>(frame->buf_pts)
-                                  + static_cast<uint64_t>(base_time);
 
         // FPS overlay — one label per frame, top-left corner
         NvDsDisplayMeta* dmeta = nvds_acquire_display_meta_from_pool(batch);
@@ -122,7 +131,7 @@ GstPadProbeReturn detection_probe_cb(GstPad* pad, GstPadProbeInfo* info, gpointe
                 .top                  = r.top,
                 .width                = r.width,
                 .height               = r.height,
-                .timestamp_ns         = frame->buf_pts,
+                .timestamp_ns         = capture_ns,   // steady_clock domain (was buf_pts) — see above
                 .capture_monotonic_ns = capture_ns,
             });
         }

@@ -13,9 +13,16 @@
     // Frames without a matching detection before a track is declared LOST.
     "loss_frames": 15,
 
-    // Mahalanobis gate distance: detections further than this from any track are
-    // treated as new-object candidates rather than measurement updates (meters).
+    // Euclidean pre-gate (meters): a cheap distance reject applied before the Mahalanobis
+    // test. Detections beyond this from a track's predicted position skip that track.
+    // NOTE: this is NOT the statistical gate — see mahalanobis_gate below.
     "gate_distance": 2.0,
+
+    // Statistical (Mahalanobis, chi-square 2-DOF) gate. Detections beyond this distance
+    // from a track — in covariance-normalized units — are statistically incompatible and
+    // become new-object candidates instead of updates. 9.21 ≈ 99% confidence; raise to
+    // absorb more, lower to spawn tracks more readily in high-clutter venues.
+    "mahalanobis_gate": 9.21,
 
     // Expected density of false-positive (clutter) detections per m².
     // Higher = tracker is less eager to create new tracks on single detections.
