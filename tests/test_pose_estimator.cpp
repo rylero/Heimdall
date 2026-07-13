@@ -153,6 +153,52 @@ TEST_CASE("class_id and confidence are preserved", "[pose]") {
     REQUIRE_THAT(results[0].confidence, WithinAbs(0.83f, 1e-5f));
 }
 
+// ── rotation / flip handling ─────────────────────────────────────────────────
+
+// A forward-facing, pitched-down camera like cam1: 180° pipeline rotation, real intrinsics.
+static CameraParams cam1_like(int rotation) {
+    CameraParams p;
+    p.intrinsics = {539.8783f, 541.1769f, 353.8330f, 195.5427f,
+                    -0.001437f, 0.081865f, -0.004672f, -0.002202f, -0.158375f};
+    p.extrinsics.tx = 0.0f; p.extrinsics.ty = 0.0889f; p.extrinsics.tz = 0.5207f;
+    p.extrinsics.R  = rotation_from_euler(0.4363f, 0.5061f, 0.0f);
+    p.rotation = rotation; p.width = 640; p.height = 480;
+    return p;
+}
+
+TEST_CASE("rotation=180 un-rotates bbox to the native-frame ground contact", "[pose][rotation]") {
+    // A native-frame bbox (L,T,w,h). Under a 180° rotation the same object's bbox in the
+    // nvinfer frame is (W-1-L-w, H-1-T-h, w, h). project() with rotation=180 must recover the
+    // exact same field point that rotation=0 gets from the native bbox — i.e. the un-rotation
+    // is the exact inverse. This is the regression guard for the flip-intrinsic sign bugs.
+    const float L = 279.f, T = 169.f, w = 60.f, h = 60.f;   // native bbox
+    Detection native_det = make_det(0, L, T, w, h);
+    Detection rot_det     = make_det(0, 640.f - 1.f - (L + w), 480.f - 1.f - (T + h), w, h);
+    RobotPose pose{0.f, 0.f, 0.f};
+
+    auto r0   = PoseEstimator({cam1_like(0)}).project({native_det}, pose);
+    auto r180 = PoseEstimator({cam1_like(180)}).project({rot_det},  pose);
+    REQUIRE(r0.size() == 1);
+    REQUIRE(r180.size() == 1);
+    REQUIRE_THAT(r180[0].x, WithinAbs(r0[0].x, 1e-3f));
+    REQUIRE_THAT(r180[0].y, WithinAbs(r0[0].y, 1e-3f));
+}
+
+TEST_CASE("closer object projects nearer under 180° rotation", "[pose][rotation]") {
+    // As the robot approaches a stationary floor object its bbox grows and moves down in the
+    // rotated frame; the reported forward distance must DECREASE. Before the fix this diverged
+    // (object's head was used as ground contact), which a real drive-test caught (#27).
+    PoseEstimator est({cam1_like(180)});
+    RobotPose pose{0.f, 0.f, 0.f};
+    auto far  = est.project({make_det(0, 300.f, 250.f, 60.f, 60.f)}, pose);
+    auto near = est.project({make_det(0, 295.f, 210.f, 79.f, 79.f)}, pose);
+    REQUIRE(far.size() == 1);
+    REQUIRE(near.size() == 1);
+    REQUIRE(far[0].x  > 0.f);
+    REQUIRE(near[0].x > 0.f);
+    REQUIRE(near[0].x < far[0].x);   // closer bbox -> nearer forward distance
+}
+
 TEST_CASE("multiple cameras projected independently", "[pose]") {
     auto cam0 = overhead_cam(500.f, 500.f, 320.f, 240.f, 0.f,  0.f, 2.f);
     auto cam1 = overhead_cam(500.f, 500.f, 320.f, 240.f, 0.f, -1.f, 2.f); // 1m in -Y (right)

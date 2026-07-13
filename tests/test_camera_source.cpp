@@ -56,6 +56,18 @@ TEST_CASE("Mirror camera has mirror_of set to source id", "[camera]") {
     REQUIRE(mirror.mirror_of == 0);
 }
 
+TEST_CASE("rotation maps to the correct nvvidconv flip-method", "[camera][rotation]") {
+    auto method = [](int rot) {
+        CameraConfig cfg{.id=0, .type=CameraType::USB, .device="/dev/video0",
+                         .width=640, .height=480, .fps=60, .rotation=rot};
+        return build_source_description(cfg);
+    };
+    REQUIRE(method(0)  .find("flip-method=0") != std::string::npos);
+    REQUIRE(method(90) .find("flip-method=3") != std::string::npos);  // clockwise 90
+    REQUIRE(method(180).find("flip-method=2") != std::string::npos);
+    REQUIRE(method(270).find("flip-method=1") != std::string::npos);  // == ccw 90
+}
+
 TEST_CASE("Unknown type throws invalid_argument", "[camera]") {
     CameraConfig cfg{0, static_cast<CameraType>(99), "/dev/video0"};
     REQUIRE_THROWS_AS(build_source_description(cfg), std::invalid_argument);
