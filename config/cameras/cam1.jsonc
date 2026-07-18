@@ -17,6 +17,10 @@
   "mirror_of": -1,
   // Camera is mounted upside-down; rotate 180° before nvinfer. Only 0/90/180/270 allowed.
   "rotation": 180,
+  // nvinfer network input dims (must match infer-dims in config/infer_yolo*.txt). Detections
+  // arrive letterboxed into this size; projection undoes the letterbox to native pixels.
+  "infer_width": 640,
+  "infer_height": 640,
   "intrinsics": {
     "fx": 541.8765,
     "fy": 542.0541,

@@ -111,6 +111,10 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         params.rotation = cfg.rotation;
         params.width    = cfg.width;
         params.height   = cfg.height;
+        // Inference net dims — detections arrive letterboxed into this size (must match the
+        // nvinfer infer-dims). Projection undoes the letterbox to recover native pixels.
+        params.infer_width  = j.value("infer_width",  0);
+        params.infer_height = j.value("infer_height", 0);
 
         result.pipeline_cameras.push_back(cfg);
         result.pose_cameras.push_back(params);

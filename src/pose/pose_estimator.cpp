@@ -28,24 +28,41 @@ PoseEstimator::PoseEstimator(std::vector<CameraParams> cameras)
 // axis-aligned boxes, transforming the corners and taking native (mid-x, max-y) is exact.
 static void ground_contact_native(const Detection& det, const CameraParams& cam,
                                    float& out_px, float& out_py) {
-    if (cam.rotation == 0) {                    // fast path: no rotation
-        out_px = det.left + det.width / 2.f;
-        out_py = det.top  + det.height;
-        return;
-    }
-    const float W = static_cast<float>(cam.width);
+    const float W = static_cast<float>(cam.width);   // native frame dims
     const float H = static_cast<float>(cam.height);
-    const float xs[4] = {det.left, det.left + det.width, det.left,               det.left + det.width};
-    const float ys[4] = {det.top,  det.top,              det.top + det.height,   det.top + det.height};
+
+    // Dims of the frame nvinfer actually saw (native, post-rotation): 90/270 swap W/H.
+    const bool  swap = (cam.rotation == 90 || cam.rotation == 270);
+    const float rotW = swap ? H : W;
+    const float rotH = swap ? W : H;
+
+    // Stage 1 — undo maintain-aspect letterbox from net space back to the rotated frame.
+    // scale fits the rotated frame inside the net input; padding centers it. When infer dims
+    // are unset (0), this is a no-op and det coords are taken as already-native.
+    float scale = 1.f, padx = 0.f, pady = 0.f;
+    if (cam.infer_width > 0 && cam.infer_height > 0) {
+        const float nw = static_cast<float>(cam.infer_width);
+        const float nh = static_cast<float>(cam.infer_height);
+        scale = std::min(nw / rotW, nh / rotH);
+        padx  = 0.5f * (nw - rotW * scale);
+        pady  = 0.5f * (nh - rotH * scale);
+    }
+
+    const float xs[4] = {det.left, det.left + det.width, det.left,             det.left + det.width};
+    const float ys[4] = {det.top,  det.top,              det.top + det.height, det.top + det.height};
 
     float minx = 1e30f, maxx = -1e30f, maxy = -1e30f;
     for (int i = 0; i < 4; ++i) {
+        // net -> rotated-frame pixel
+        const float rx = (xs[i] - padx) / scale;
+        const float ry = (ys[i] - pady) / scale;
+        // rotated-frame -> native (inverse of the clockwise pipeline rotation)
         float xn, yn;
         switch (cam.rotation) {
-            case 90:  xn = ys[i];         yn = (H - 1.f) - xs[i]; break;  // ccw-inverse of cw90
-            case 180: xn = (W - 1.f) - xs[i]; yn = (H - 1.f) - ys[i]; break;
-            case 270: xn = (W - 1.f) - ys[i]; yn = xs[i];         break;
-            default:  xn = xs[i];         yn = ys[i];             break;
+            case 90:  xn = ry;            yn = (H - 1.f) - rx; break;  // ccw-inverse of cw90
+            case 180: xn = (W - 1.f) - rx; yn = (H - 1.f) - ry; break;
+            case 270: xn = (W - 1.f) - ry; yn = rx;            break;
+            default:  xn = rx;            yn = ry;             break;
         }
         minx = std::min(minx, xn);
         maxx = std::max(maxx, xn);

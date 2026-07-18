@@ -23,6 +23,12 @@ struct CameraParams {
     int rotation = 0;
     int width    = 0;
     int height   = 0;
+    // Inference network input dims. nvinfer letterboxes the (rotated) camera frame into this
+    // size with maintain-aspect-ratio, and detections come back in THIS space. When > 0, the
+    // projection undoes the letterbox (scale + pad) to recover native-frame pixels before
+    // unprojecting. 0 = detections are already in native coords (sim/replay) — no correction.
+    int infer_width  = 0;
+    int infer_height = 0;
 };
 
 // Robot position and heading in field frame (WPiLib standard coordinates).
