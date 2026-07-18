@@ -16,7 +16,13 @@
     // Euclidean pre-gate (meters): a cheap distance reject applied before the Mahalanobis
     // test. Detections beyond this from a track's predicted position skip that track.
     // NOTE: this is NOT the statistical gate — see mahalanobis_gate below.
-    "gate_distance": 2.0,
+    // MUST be smaller than the spacing between distinct objects, otherwise every detection
+    // gates with every track: all tracks collapse to the weighted centroid, the densest
+    // cluster (e.g. a fuel seen by two cameras) outvotes and abandons sparser objects, and the
+    // abandoned object respawns a new track every frame → unbounded track growth. Size it as
+    // max per-frame object displacement + measurement jitter (~0.4 m here), well under the
+    // closest real object spacing.
+    "gate_distance": 0.75,
 
     // Statistical (Mahalanobis, chi-square 2-DOF) gate. Detections beyond this distance
     // from a track — in covariance-normalized units — are statistically incompatible and
