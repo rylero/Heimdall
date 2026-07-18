@@ -78,11 +78,30 @@ CameraLoadResult load_camera_configs(const std::string& dir) {
         params.extrinsics.tx = extr.at("tx").get<float>();
         params.extrinsics.ty = extr.at("ty").get<float>();
         params.extrinsics.tz = extr.at("tz").get<float>();
-        params.extrinsics.R  = rotation_from_euler(
-            extr.at("yaw").get<float>(),
-            extr.at("pitch").get<float>(),
-            extr.at("roll").get<float>()
-        );
+        // Two ways to specify the camera->robot rotation. Prefer a raw row-major 3x3
+        // matrix R (9 floats) for awkward mounts where Euler decomposition order bites;
+        // otherwise fall back to yaw/pitch/roll (see rotation_from_euler). The two are
+        // mutually exclusive to avoid an ambiguous "which one wins" config.
+        const bool has_R     = extr.contains("R");
+        const bool has_euler = extr.contains("yaw") || extr.contains("pitch") ||
+                               extr.contains("roll");
+        if (has_R && has_euler)
+            throw std::runtime_error("camera " + p.string() +
+                ": extrinsics specify both \"R\" and yaw/pitch/roll — use one or the other");
+        if (has_R) {
+            const auto& Rj = extr.at("R");
+            if (!Rj.is_array() || Rj.size() != 9)
+                throw std::runtime_error("camera " + p.string() +
+                    ": extrinsics.\"R\" must be an array of 9 numbers (row-major 3x3)");
+            for (int i = 0; i < 9; ++i)
+                params.extrinsics.R[i] = Rj[i].get<float>();
+        } else {
+            params.extrinsics.R = rotation_from_euler(
+                extr.at("yaw").get<float>(),
+                extr.at("pitch").get<float>(),
+                extr.at("roll").get<float>()
+            );
+        }
 
         // Intrinsics are calibrated on the raw (native) camera feed and are left untouched.
         // The pipeline rotates the frame before nvinfer, so detections arrive rotated; the
