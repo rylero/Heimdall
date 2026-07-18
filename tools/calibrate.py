@@ -19,12 +19,19 @@ Extrinsics tab
     rotation R maps robot→camera;  camera Z in robot frame = R[2,:].
 
 IMAGE REQUIREMENTS
-  Capture raw (unflipped) frames. The JSON stores pre-flip intrinsics;
-  camera_config_loader.cpp applies cx/cy flip adjustment at load time.
-  Use tools/capture.py on the Jetson to grab frames offline, then load here.
+  Capture raw, native (un-rotated) frames — the same frame the intrinsics describe.
+  The pipeline's "rotation" enum (0/90/180/270) is applied downstream and un-rotated
+  in projection; it must NOT be baked into the calibration. Use tools/capture.py on
+  the Jetson to grab frames offline, then load here.
+
+CONFIG TARGET
+  Reads/writes the runtime configs in config/cameras/*.jsonc, matched by the "id"
+  field (filenames are arbitrary — cam1.jsonc holds id 0). Values are updated in
+  place, preserving comments. Only keys already present are written.
 """
 
 import json
+import re
 import threading
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext
@@ -78,10 +85,48 @@ def _load_dir(directory: str) -> list[tuple[str, np.ndarray]]:
     return [(n, img) for n, img in result if img is not None]
 
 
+def _strip_jsonc(text: str) -> str:
+    """Drop // and /* */ comments so the runtime .jsonc configs parse with json.loads.
+    (Matches nlohmann's ignore_comments in camera_config_loader.cpp. Assumes no '//'
+    or '/*' appears inside a string value — true for these config files.)"""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", "", text)
+    return text
+
+
+def _find_config(cam_id: int) -> tuple[Path, dict]:
+    """Resolve the runtime camera config whose "id" == cam_id, across config/cameras/*.jsonc.
+    The runtime loader (camera_config_loader.cpp) globs *.jsonc and keys on the id field —
+    filenames are arbitrary (cam1.jsonc holds id 0), so match on id, not name."""
+    for p in sorted(CONFIG_DIR.glob("*.jsonc")):
+        try:
+            cfg = json.loads(_strip_jsonc(p.read_text()))
+        except Exception:
+            continue
+        if cfg.get("id") == cam_id:
+            return p, cfg
+    raise FileNotFoundError(
+        f"no *.jsonc in {CONFIG_DIR} has \"id\": {cam_id} "
+        f"(found: {[p.name for p in sorted(CONFIG_DIR.glob('*.jsonc'))]})")
+
+
+def _update_jsonc_values(path: Path, updates: dict[str, float]) -> list[str]:
+    """Surgically overwrite existing numeric values in a .jsonc file, preserving comments
+    and formatting. Each key ("fx", "yaw", ...) is unique across these configs. Returns the
+    list of keys that were NOT found (so the caller can warn instead of silently dropping)."""
+    text = path.read_text()
+    missing: list[str] = []
+    for key, val in updates.items():
+        pattern = re.compile(rf'("{re.escape(key)}"\s*:\s*)-?[\d.]+(?:[eE][+-]?\d+)?')
+        text, n = pattern.subn(lambda m: m.group(1) + repr(float(val)), text, count=1)
+        if n == 0:
+            missing.append(key)
+    path.write_text(text)
+    return missing
+
+
 def _load_existing_K(cam_id: int):
-    cfg_path = CONFIG_DIR / f"camera_{cam_id}.json"
-    with open(cfg_path) as f:
-        cfg = json.load(f)
+    _, cfg = _find_config(cam_id)
     intr = cfg["intrinsics"]
     K = np.array([[intr["fx"], 0, intr["cx"]], [0, intr["fy"], intr["cy"]], [0, 0, 1]], np.float64)
     d = intr["distortion"]
@@ -494,21 +539,23 @@ class CalibApp:
     def _intr_write(self):
         if self.intr_K is None:
             return
-        cfg_path = CONFIG_DIR / f"camera_{self.cam_id_var.get()}.json"
-        if not cfg_path.exists():
-            messagebox.showerror("Not found", f"{cfg_path}")
+        try:
+            cfg_path, _ = _find_config(self.cam_id_var.get())
+        except FileNotFoundError as e:
+            messagebox.showerror("Not found", str(e))
             return
-        with open(cfg_path) as f:
-            cfg = json.load(f)
         K, d = self.intr_K, self.intr_dist.flatten()
-        cfg["intrinsics"].update({
-            "fx": round(float(K[0,0]), 4), "fy": round(float(K[1,1]), 4),
-            "cx": round(float(K[0,2]), 4), "cy": round(float(K[1,2]), 4),
-            "distortion": {k: round(float(v), 6)
-                           for k, v in zip("k1 k2 p1 p2 k3".split(), d)},
-        })
-        with open(cfg_path, "w") as f:
-            json.dump(cfg, f, indent=2)
+        updates = {
+            "fx": round(float(K[0, 0]), 4), "fy": round(float(K[1, 1]), 4),
+            "cx": round(float(K[0, 2]), 4), "cy": round(float(K[1, 2]), 4),
+        }
+        updates.update({k: round(float(v), 6)
+                        for k, v in zip("k1 k2 p1 p2 k3".split(), d)})
+        missing = _update_jsonc_values(cfg_path, updates)
+        if missing:
+            messagebox.showwarning("Missing keys",
+                f"These keys were not present in {cfg_path.name} and were NOT written: "
+                f"{', '.join(missing)}")
         messagebox.showinfo("Saved", f"Intrinsics → {cfg_path.name}")
         self.status_var.set(f"Intrinsics written → {cfg_path.name}")
 
@@ -717,16 +764,17 @@ class CalibApp:
     def _extr_write(self):
         if not self.extr_result:
             return
-        cfg_path = CONFIG_DIR / f"camera_{self.cam_id_var.get()}.json"
-        if not cfg_path.exists():
-            messagebox.showerror("Not found", f"{cfg_path}")
+        try:
+            cfg_path, _ = _find_config(self.cam_id_var.get())
+        except FileNotFoundError as e:
+            messagebox.showerror("Not found", str(e))
             return
-        with open(cfg_path) as f:
-            cfg = json.load(f)
-        for key, val in self.extr_result.items():
-            cfg["extrinsics"][key] = round(val, 6)
-        with open(cfg_path, "w") as f:
-            json.dump(cfg, f, indent=2)
+        updates = {key: round(val, 6) for key, val in self.extr_result.items()}
+        missing = _update_jsonc_values(cfg_path, updates)
+        if missing:
+            messagebox.showwarning("Missing keys",
+                f"These keys were not present in {cfg_path.name} and were NOT written: "
+                f"{', '.join(missing)}. Add them to extrinsics and re-run.")
         keys = ", ".join(self.extr_result)
         messagebox.showinfo("Saved", f"Extrinsics ({keys}) → {cfg_path.name}")
         self.status_var.set(f"Extrinsics written → {cfg_path.name}")
