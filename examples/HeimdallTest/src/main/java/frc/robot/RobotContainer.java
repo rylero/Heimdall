@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.auto.AutoRoutines;
 import frc.robot.commands.DriveCommands;
 import frc.robot.commands.PathfindToNearestFuelCommand;
+import frc.robot.commands.PredictiveInterceptCommand;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
@@ -150,8 +151,15 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    // X-lock wheels
-    controller.circle().whileTrue(Commands.run(drive::stopWithX, drive));
+    // Hold A (cross): drive to and stop at the nearest fuel. Release to return to joystick.
+    controller.cross().whileTrue(PathfindToNearestFuelCommand.create(drive, heimdall));
+
+    // Hold B (circle): predictively intercept the nearest (moving) fuel. Release to return to
+    // joystick.
+    controller.circle().whileTrue(PredictiveInterceptCommand.create(drive, heimdall));
+
+    // X-lock wheels (moved off circle, which is now the intercept button).
+    controller.triangle().whileTrue(Commands.run(drive::stopWithX, drive));
   }
 
   public Command getAutonomousCommand() {
