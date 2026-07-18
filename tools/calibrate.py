@@ -137,13 +137,20 @@ def _load_existing_K(cam_id: int):
 # ── App ────────────────────────────────────────────────────────────────────────
 
 class CalibApp:
-    def __init__(self, root: tk.Tk):
+    def __init__(self, root: tk.Tk, square_mm: float = 25.0,
+                 cols: int = 9, rows: int = 6, cam_id: int = 0):
         self.root = root
         self.root.title("Heimdall Camera Calibration")
 
         self._build_top_bar()
         self._build_notebook()
         self._build_status()
+
+        # apply CLI-provided board defaults
+        self.sq_var.set(square_mm)
+        self.cols_var.set(cols)
+        self.rows_var.set(rows)
+        self.cam_id_var.set(cam_id)
 
         # ── shared live camera ──────────────────────────────────────────────
         self.cap: cv2.VideoCapture | None = None
@@ -787,8 +794,17 @@ class CalibApp:
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="Heimdall camera calibration GUI")
+    ap.add_argument("--square-mm", type=float, default=25.0, help="checkerboard square size in mm")
+    ap.add_argument("--cols", type=int, default=9, help="inner corners across")
+    ap.add_argument("--rows", type=int, default=6, help="inner corners down")
+    ap.add_argument("--cam", type=int, default=0, help="camera id (matches config \"id\")")
+    args = ap.parse_args()
+
     root = tk.Tk()
-    app = CalibApp(root)
+    app = CalibApp(root, square_mm=args.square_mm, cols=args.cols,
+                   rows=args.rows, cam_id=args.cam)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
 
