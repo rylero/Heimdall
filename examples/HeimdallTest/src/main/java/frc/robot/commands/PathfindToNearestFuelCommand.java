@@ -19,9 +19,12 @@ import org.littletonrobotics.junction.Logger;
  * reaches the fuel, so re-enabling Test mode re-selects and drives to the nearest fuel again.
  */
 public final class PathfindToNearestFuelCommand {
-  // Proportional gains: commanded speed = gain * error, capped at the drivetrain's own maxima.
-  private static final double LINEAR_KP = 2.5; // (m/s) per meter of position error
-  private static final double THETA_KP = 4.0; // (rad/s) per radian of heading error
+  // Proportional gains: commanded speed = gain * error, capped at the limits below.
+  private static final double LINEAR_KP = 1.0; // (m/s) per meter of position error
+  private static final double THETA_KP = 2.0; // (rad/s) per radian of heading error
+  // Hard speed caps -- deliberately slow, well under the drivetrain maxima.
+  private static final double MAX_LINEAR_MPS = 0.6;
+  private static final double MAX_ANGULAR_RAD_PS = 1.5;
   // Considered "arrived" (and the command ends) inside this radius of the fuel.
   private static final double STOP_TOLERANCE_M = 0.15;
 
@@ -67,17 +70,13 @@ public final class PathfindToNearestFuelCommand {
 
     // Field-relative translational velocity: point the speed vector at the fuel, magnitude
     // proportional to distance and capped at the drivetrain max.
-    double speed = Math.min(LINEAR_KP * distance, drive.getMaxLinearSpeedMetersPerSec());
+    double speed = Math.min(LINEAR_KP * distance, MAX_LINEAR_MPS);
     Translation2d fieldVelocity =
         distance > 1e-6 ? error.div(distance).times(speed) : Translation2d.kZero;
 
     // Turn to face the fuel as we approach.
     double headingError = error.getAngle().minus(pose.getRotation()).getRadians();
-    double omega =
-        MathUtil.clamp(
-            THETA_KP * headingError,
-            -drive.getMaxAngularSpeedRadPerSec(),
-            drive.getMaxAngularSpeedRadPerSec());
+    double omega = MathUtil.clamp(THETA_KP * headingError, -MAX_ANGULAR_RAD_PS, MAX_ANGULAR_RAD_PS);
 
     drive.runVelocity(
         ChassisSpeeds.fromFieldRelativeSpeeds(
