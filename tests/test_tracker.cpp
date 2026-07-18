@@ -76,6 +76,26 @@ TEST_CASE("two well-separated objects tracked with correct class IDs", "[tracker
     REQUIRE(class_ids == std::vector<int>{0, 1});
 }
 
+TEST_CASE("coincident tracks from two overlapping cameras merge into one", "[tracker]") {
+    // One physical object seen by two cameras -> two detections 0.12 m apart. Both spawn a track
+    // on the first frame (before dup_spawn_radius can suppress either), so a merge pass is the only
+    // thing that collapses them back to a single track.
+    ObjectTracker t({.confirmation_frames = 2, .gate_distance = 0.75f, .dup_spawn_radius = 0.3f});
+    std::vector<FieldDetection> two_cams = {{0, 3.00f, 0.f, 0.9f}, {0, 3.12f, 0.f, 0.9f}};
+    for (int i = 0; i < 30; ++i)
+        t.update(two_cams, i * 0.02);
+    REQUIRE(t.debug_info().size() == 1);
+}
+
+TEST_CASE("distinct objects beyond the gate stay separate and do not merge", "[tracker]") {
+    // 1.0 m apart, gate 0.75 -> no cross-association, and 1.0 m > dup_spawn_radius -> no merge.
+    ObjectTracker t({.confirmation_frames = 2, .gate_distance = 0.75f, .dup_spawn_radius = 0.3f});
+    std::vector<FieldDetection> two = {{0, 0.f, 0.f, 0.9f}, {0, 1.0f, 0.f, 0.9f}};
+    for (int i = 0; i < 30; ++i)
+        t.update(two, i * 0.02);
+    REQUIRE(t.debug_info().size() == 2);
+}
+
 TEST_CASE("tentative track discarded on first missed frame", "[tracker]") {
     ObjectTracker t({.confirmation_frames = 5, .gate_distance = 0.1f});
     t.update(at(0.f, 0.f), 0.0);
