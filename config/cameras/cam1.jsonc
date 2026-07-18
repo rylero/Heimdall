@@ -34,6 +34,9 @@
     "tz": 0.5207,
     "yaw": 0.4363,
     "pitch": 0.5061,
-    "roll": 0.0
+    // Camera sensor is mounted upside-down (rotation:180). The projection unprojects in the
+    // raw sensor frame, so the 180° sensor roll must be modeled here — otherwise the lateral
+    // (Y) axis inverts. π = upside-down.
+    "roll": 3.14159
   }
 }
