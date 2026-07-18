@@ -1,6 +1,22 @@
 #include "pose_estimator.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
+
+// One-shot projection tracing. Set HEIMDALL_DEBUG_PROJ=1 to dump, for the first N
+// detections, every intermediate of the pixel->field chain so the exact pixel space
+// and each transform can be checked against a hand calculation. Off by default.
+namespace {
+bool proj_debug_enabled() {
+    static const bool on = [] {
+        const char* e = std::getenv("HEIMDALL_DEBUG_PROJ");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+int& proj_debug_budget() { static int n = 40; return n; }
+}
 
 PoseEstimator::PoseEstimator(std::vector<CameraParams> cameras)
     : cameras_(std::move(cameras)) {}
@@ -85,6 +101,15 @@ bool PoseEstimator::project_pixel(int camera_id,
     const float t = -ofz / dfz;
     field_x = ofx + t * dfx;
     field_y = ofy + t * dfy;
+
+    if (proj_debug_enabled() && proj_debug_budget() > 0) {
+        std::fprintf(stderr,
+            "[proj]   pixel=(%.1f,%.1f) -> undist(u,v)=(%.4f,%.4f) "
+            "d_rob=(%.4f,%.4f,%.4f) d_field=(%.4f,%.4f,%.4f)\n"
+            "[proj]   cam_origin_field=(%.4f,%.4f,%.4f) t=%.4f -> field=(%.4f,%.4f)\n",
+            px, py, u, v, drx, dry, drz, dfx, dfy, dfz,
+            ofx, ofy, ofz, t, field_x, field_y);
+    }
     return true;
 }
 
@@ -105,12 +130,25 @@ std::vector<FieldDetection> PoseEstimator::project(
         // intrinsics per-flip — keeps one clean transform and always picks the correct edge:
         // "bottom of the bbox in the rotated frame" is the object's head, not its feet, once
         // the image is rotated 180°.
+        const auto& cam = cameras_[static_cast<size_t>(det.camera_id)];
         float px, py;
-        ground_contact_native(det, cameras_[static_cast<size_t>(det.camera_id)], px, py);
+        ground_contact_native(det, cam, px, py);
+
+        if (proj_debug_enabled() && proj_debug_budget() > 0) {
+            std::fprintf(stderr,
+                "[proj] cam=%d rot=%d native_WxH=%dx%d bbox(l,t,w,h)=(%.1f,%.1f,%.1f,%.1f) "
+                "-> ground_contact_native=(%.1f,%.1f) | pose=(%.3f,%.3f,h=%.4f)\n",
+                det.camera_id, cam.rotation, cam.width, cam.height,
+                det.left, det.top, det.width, det.height, px, py,
+                robot_pose.x, robot_pose.y, robot_pose.heading);
+        }
 
         float fx, fy;
         if (!project_pixel(det.camera_id, px, py, robot_pose, fx, fy))
             continue;
+
+        if (proj_debug_enabled() && proj_debug_budget() > 0)
+            --proj_debug_budget();
 
         results.push_back({det.class_id, fx, fy, det.confidence});
     }
