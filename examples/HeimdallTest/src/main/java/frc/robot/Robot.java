@@ -134,6 +134,8 @@ public class Robot extends LoggedRobot {
   @Override
   public void testInit() {
     CommandScheduler.getInstance().cancelAll();
+    // Test mode = "drive to the nearest fuel and stop" (see PathfindToNearestFuelCommand).
+    robotContainer.getTestModeCommand().schedule();
   }
 
   @Override

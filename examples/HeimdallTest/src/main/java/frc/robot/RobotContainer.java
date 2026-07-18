@@ -11,6 +11,7 @@ import edu.wpi.first.wpilibj2.command.button.CommandPS4Controller;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.auto.AutoRoutines;
 import frc.robot.commands.DriveCommands;
+import frc.robot.commands.PathfindToNearestFuelCommand;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
@@ -155,6 +156,14 @@ public class RobotContainer {
 
   public Command getAutonomousCommand() {
     return autoChooser.get();
+  }
+
+  /**
+   * Test-mode command: pathfinds to the nearest visible fuel game piece and stops. Scheduled on
+   * entering WPILib Test mode (see {@link Robot#testInit()}).
+   */
+  public Command getTestModeCommand() {
+    return PathfindToNearestFuelCommand.create(drive, heimdall);
   }
 
   public void updateSimulation() {

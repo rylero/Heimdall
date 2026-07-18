@@ -3,6 +3,7 @@ package frc.robot.subsystems.heimdall;
 import com.heimdall.TrackedObject;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -12,6 +13,9 @@ import java.util.function.BiConsumer;
 import org.littletonrobotics.junction.Logger;
 
 public class Heimdall extends SubsystemBase {
+  /** Detection class id for fuel game pieces (matches the YOLO model's class 0). */
+  public static final int FUEL_CLASS_ID = 0;
+
   private final HeimdallIO io;
   private final HeimdallIOInputsAutoLogged inputs = new HeimdallIOInputsAutoLogged();
   private final BiConsumer<Pose2d, Double> visionMeasurementConsumer;
@@ -86,5 +90,14 @@ public class Heimdall extends SubsystemBase {
   public Optional<TrackedObject> getBestTrackedObject() {
     return getTrackedObjects().stream()
         .max(Comparator.comparingDouble(TrackedObject::getConfidence));
+  }
+
+  /** Returns the fuel game piece nearest to {@code origin}, if any are currently tracked. */
+  public Optional<TrackedObject> getNearestFuel(Translation2d origin) {
+    return getTrackedObjects().stream()
+        .filter((t) -> t.getClassId() == FUEL_CLASS_ID)
+        .min(
+            Comparator.comparingDouble(
+                (t) -> Math.hypot(t.getX() - origin.getX(), t.getY() - origin.getY())));
   }
 }
