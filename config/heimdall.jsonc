@@ -63,5 +63,6 @@
 
   // Path to AprilTag field layout + camera calibration JSON.
   // Comment out or remove this key to disable AprilTag pose correction.
-  "apriltag_layout": "config/apriltag_layout.jsonc"
+  // Disabled: /dev/video2 is now cam2 (YOLO detection), not the AprilTag camera.
+  // "apriltag_layout": "config/apriltag_layout.jsonc"
 }
