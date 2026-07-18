@@ -24,6 +24,16 @@
     // absorb more, lower to spawn tracks more readily in high-clutter venues.
     "mahalanobis_gate": 9.21,
 
+    // Duplicate-suppression radius (METERS, Euclidean). An unclaimed detection within this
+    // distance of an existing track is treated as the SAME object seen again (most often a
+    // second overlapping camera projecting to the same field xy) and is absorbed instead of
+    // spawning a new track. Without this, coincident multi-camera detections spawn a fresh
+    // track every frame that never dies → unbounded track growth. Detections beyond this still
+    // spawn, so two genuinely distinct objects sharing one gate still split. Raise if two
+    // cameras disagree by more than this (loose calibration); lower to split closer objects.
+    // 0 = disabled.
+    "dup_spawn_radius": 0.3,
+
     // Expected density of false-positive (clutter) detections per m².
     // Higher = tracker is less eager to create new tracks on single detections.
     "clutter_density": 1.0,

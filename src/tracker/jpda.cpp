@@ -129,8 +129,27 @@ std::vector<int> jpda_update(
         if (best_j >= 0) claimed[best_j] = 1;
     }
 
+    // Duplicate suppression: an unclaimed detection that sits essentially on top of an existing
+    // track (Mahalanobis^2 < dup_spawn_gate) is the SAME object seen again — most often a second
+    // camera whose projection lands at the same field xy — not a new object. Without this, every
+    // frame leaves that coincident detection unclaimed and spawns a fresh track that never dies
+    // (a detection is always in its gate), so tracks grow unbounded on any multi-camera overlap.
+    // Detections beyond dup_spawn_gate still spawn, so two genuinely distinct objects sharing one
+    // association gate still split (preserves the 5.19 behaviour).
     std::vector<int> unassociated;
-    for (int j = 0; j < m; ++j)
-        if (!claimed[j]) unassociated.push_back(j);
+    const float dup_r2 = cfg.dup_spawn_radius * cfg.dup_spawn_radius;
+    for (int j = 0; j < m; ++j) {
+        if (claimed[j]) continue;
+        if (cfg.dup_spawn_radius > 0.f) {
+            bool duplicate = false;
+            for (int i = 0; i < n; ++i) {
+                const float dx = detections[j].x - tracks[i].state[0];
+                const float dy = detections[j].y - tracks[i].state[1];
+                if (dx*dx + dy*dy < dup_r2) { duplicate = true; break; }
+            }
+            if (duplicate) continue;  // coincident duplicate of an existing track — absorb
+        }
+        unassociated.push_back(j);
+    }
     return unassociated;
 }

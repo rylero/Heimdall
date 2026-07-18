@@ -34,6 +34,7 @@ std::vector<TrackEvent> ObjectTracker::update(
         .process_noise_q = config_.process_noise_q,
         .pos_cov_floor   = config_.pos_cov_floor,
         .mahalanobis_gate = config_.mahalanobis_gate,
+        .dup_spawn_radius = config_.dup_spawn_radius,
     };
 
     auto unassociated = jpda_update(tracks_, detections, timestamp_s, jpda_cfg);

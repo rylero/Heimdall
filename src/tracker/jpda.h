@@ -16,6 +16,14 @@ struct JpdaConfig {
     float process_noise_q  = 2.0f;   // process noise intensity; passed through to Kalman
     float pos_cov_floor    = 0.1f;   // minimum position covariance diagonal; passed through to Kalman
     float mahalanobis_gate = MAHALANOBIS_GATE_THRESHOLD;  // chi-square gate (2 DOF); tune per clutter env
+    // Duplicate-suppression radius (METERS, Euclidean). An unclaimed detection within this
+    // distance of an existing track is treated as a coincident duplicate (e.g. the SAME object
+    // seen by a second overlapping camera, which projects to the same field xy) and is NOT
+    // spawned as a new track. Detections farther than this still spawn, so two genuinely distinct
+    // objects sharing one association gate still split. Euclidean (not Mahalanobis) on purpose:
+    // a young track's covariance is huge, so a Mahalanobis test would absorb distinct objects
+    // near new tracks; a metric radius is cov-independent. Set 0 to disable.
+    float dup_spawn_radius = 0.3f;
 };
 
 // Run one JPDAF cycle:

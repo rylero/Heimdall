@@ -16,6 +16,7 @@ struct ObjectTrackerConfig {
     float       process_noise_q     = 2.0f;   // process noise intensity
     float       pos_cov_floor       = 0.1f;   // minimum position covariance diagonal
     float       mahalanobis_gate    = MAHALANOBIS_GATE_THRESHOLD;  // chi-square statistical gate (2 DOF)
+    float       dup_spawn_radius    = 0.3f;   // meters; unclaimed det within this of a track is a duplicate, not a new track
 };
 
 class ObjectTracker {

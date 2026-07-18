@@ -68,6 +68,50 @@ TEST_CASE("associated detection increments frames_seen, resets frames_missed", "
     REQUIRE(tracks[0].frames_missed == 0);
 }
 
+TEST_CASE("coincident duplicate detection is absorbed, not spawned", "[jpda]") {
+    // One track, TWO detections on top of it (e.g. the same object seen by a second overlapping
+    // camera). Only one can be claimed as the track's primary; the duplicate must be suppressed
+    // rather than spawning a new track every frame (which would grow tracks unbounded).
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
+    std::vector<FieldDetection> dets = {
+        {0, 0.02f, 0.01f, 0.9f},
+        {0, 0.01f, 0.02f, 0.8f},   // coincident duplicate
+    };
+    auto unassoc = jpda_update(tracks, dets, 0.02, default_cfg());
+    REQUIRE(unassoc.empty());
+}
+
+TEST_CASE("dup_spawn_radius=0 disables suppression -- coincident duplicate spawns", "[jpda]") {
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
+    std::vector<FieldDetection> dets = {
+        {0, 0.02f, 0.01f, 0.9f},
+        {0, 0.01f, 0.02f, 0.8f},
+    };
+    JpdaConfig cfg = default_cfg();
+    cfg.dup_spawn_radius = 0.f;
+    auto unassoc = jpda_update(tracks, dets, 0.02, cfg);
+    REQUIRE(unassoc.size() == 1);   // the unclaimed duplicate spawns
+}
+
+TEST_CASE("distinct object beyond dup radius still spawns near a young track", "[jpda]") {
+    // A young track has a huge covariance, so a Mahalanobis duplicate test would wrongly absorb
+    // this distinct object -- the metric radius must not. Object is ~1.27 m away (>> 0.3 m).
+    std::vector<Track> tracks = {
+        make_track(1, 0, 0.f, 0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY)
+    };
+    std::vector<FieldDetection> dets = {
+        {0, 0.05f, 0.f, 0.9f},   // claimed by the track
+        {0, 0.9f, 0.9f, 0.8f},   // distinct object, unclaimed -> must spawn
+    };
+    auto unassoc = jpda_update(tracks, dets, 0.02, default_cfg());
+    REQUIRE(unassoc.size() == 1);
+    REQUIRE(unassoc[0] == 1);
+}
+
 TEST_CASE("two well-separated tracks -- each associated with its own detection", "[jpda]") {
     std::vector<Track> tracks = {
         make_track(1, 0,  0.f,  0.f, 1.f, 0.0, FilterModel::CONSTANT_VELOCITY),

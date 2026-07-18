@@ -47,6 +47,7 @@ HeimdallApp::Config load_app_config(const std::string& path) {
         if (t.contains("process_noise_q"))     cfg.tracker.process_noise_q     = t.at("process_noise_q").get<float>();
         if (t.contains("pos_cov_floor"))       cfg.tracker.pos_cov_floor       = t.at("pos_cov_floor").get<float>();
         if (t.contains("mahalanobis_gate"))    cfg.tracker.mahalanobis_gate    = t.at("mahalanobis_gate").get<float>();
+        if (t.contains("dup_spawn_radius"))    cfg.tracker.dup_spawn_radius    = t.at("dup_spawn_radius").get<float>();
         if (t.contains("filter_model"))        cfg.tracker.filter_model        = parse_filter_model(t.at("filter_model").get<std::string>());
 
         // Range validation — catch config typos that would otherwise load silently and break
@@ -62,6 +63,8 @@ HeimdallApp::Config load_app_config(const std::string& path) {
             throw std::runtime_error("tracker.gate_distance must be > 0");
         if (tk.mahalanobis_gate <= 0.f)
             throw std::runtime_error("tracker.mahalanobis_gate must be > 0");
+        if (tk.dup_spawn_radius < 0.f)
+            throw std::runtime_error("tracker.dup_spawn_radius must be >= 0");
         if (tk.p_detection <= 0.f || tk.p_detection > 1.f)
             throw std::runtime_error("tracker.p_detection must be in (0, 1]");
         if (tk.clutter_density < 0.f)
