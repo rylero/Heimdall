@@ -17,7 +17,20 @@ public class HeimdallIOReal implements HeimdallIO {
   private final HeimdallClient client;
   private final Supplier<Pose2d> poseSupplier;
 
-  // Maintains a current snapshot keyed by trackId: CONFIRMED/UPDATED upsert, LOST removes.
+  // Current active-track snapshot, keyed by trackId, rebuilt from each frame.
+  //
+  // The output PUB socket is CONFLATE=1 (comm_layer.cpp): it keeps only the newest frame and
+  // silently drops the rest. The Jetson publishes ~60fps while the robot loop polls at 50Hz,
+  // so intermediate frames ARE dropped every cycle. An incremental delta stream (upsert on
+  // UPDATED, remove on LOST) breaks under that: any dropped frame that carried a track's LOST
+  // event leaks that track forever -- it lingers at its last position, producing hundreds of
+  // stale ghosts in AdvantageScope.
+  //
+  // A conflated socket demands a full-snapshot protocol, and the tracker already provides one:
+  // it emits CONFIRMED/UPDATED for EVERY active confirmed track EVERY frame (tracker.cpp), so
+  // a single frame's non-LOST events ARE the complete active set. We therefore rebuild the map
+  // from scratch each frame instead of applying deltas; LOST is redundant (a lost track is
+  // simply absent from the next frame) and dropped frames self-heal on the next one received.
   private final Map<Integer, TrackedObject> tracks = new LinkedHashMap<>();
   private long lastProcessedTimestampNs = -1;
   private String lastError = "";
@@ -51,13 +64,15 @@ public class HeimdallIOReal implements HeimdallIO {
       DetectionFrame frame = client.getLatestFrame();
       if (frame != null && frame.getTimestampNs() != lastProcessedTimestampNs) {
         lastProcessedTimestampNs = frame.getTimestampNs();
+        // Full-snapshot rebuild (see `tracks` field comment): each frame's CONFIRMED/UPDATED
+        // events are the complete active set, so replace the map rather than applying deltas.
+        tracks.clear();
         for (TrackEvent event : frame.getEvents()) {
-          TrackedObject obj = event.getObject();
           if (event.getType() == TrackEventType.LOST) {
-            tracks.remove(obj.getTrackId());
-          } else {
-            tracks.put(obj.getTrackId(), obj);
+            continue; // redundant under snapshot semantics -- a lost track is simply absent
           }
+          TrackedObject obj = event.getObject();
+          tracks.put(obj.getTrackId(), obj);
         }
       }
     } catch (Exception e) {
