@@ -1,43 +1,43 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="280.0mm" height="223.0mm" viewBox="0 0 280.0 223.0">
-<rect x="0" y="0" width="280.0" height="223.0" fill="white"/>
-<rect x="15.000" y="15.000" width="25.0" height="25.0" fill="black"/>
-<rect x="65.000" y="15.000" width="25.0" height="25.0" fill="black"/>
-<rect x="115.000" y="15.000" width="25.0" height="25.0" fill="black"/>
-<rect x="165.000" y="15.000" width="25.0" height="25.0" fill="black"/>
-<rect x="215.000" y="15.000" width="25.0" height="25.0" fill="black"/>
-<rect x="40.000" y="40.000" width="25.0" height="25.0" fill="black"/>
-<rect x="90.000" y="40.000" width="25.0" height="25.0" fill="black"/>
-<rect x="140.000" y="40.000" width="25.0" height="25.0" fill="black"/>
-<rect x="190.000" y="40.000" width="25.0" height="25.0" fill="black"/>
-<rect x="240.000" y="40.000" width="25.0" height="25.0" fill="black"/>
-<rect x="15.000" y="65.000" width="25.0" height="25.0" fill="black"/>
-<rect x="65.000" y="65.000" width="25.0" height="25.0" fill="black"/>
-<rect x="115.000" y="65.000" width="25.0" height="25.0" fill="black"/>
-<rect x="165.000" y="65.000" width="25.0" height="25.0" fill="black"/>
-<rect x="215.000" y="65.000" width="25.0" height="25.0" fill="black"/>
-<rect x="40.000" y="90.000" width="25.0" height="25.0" fill="black"/>
-<rect x="90.000" y="90.000" width="25.0" height="25.0" fill="black"/>
-<rect x="140.000" y="90.000" width="25.0" height="25.0" fill="black"/>
-<rect x="190.000" y="90.000" width="25.0" height="25.0" fill="black"/>
-<rect x="240.000" y="90.000" width="25.0" height="25.0" fill="black"/>
-<rect x="15.000" y="115.000" width="25.0" height="25.0" fill="black"/>
-<rect x="65.000" y="115.000" width="25.0" height="25.0" fill="black"/>
-<rect x="115.000" y="115.000" width="25.0" height="25.0" fill="black"/>
-<rect x="165.000" y="115.000" width="25.0" height="25.0" fill="black"/>
-<rect x="215.000" y="115.000" width="25.0" height="25.0" fill="black"/>
-<rect x="40.000" y="140.000" width="25.0" height="25.0" fill="black"/>
-<rect x="90.000" y="140.000" width="25.0" height="25.0" fill="black"/>
-<rect x="140.000" y="140.000" width="25.0" height="25.0" fill="black"/>
-<rect x="190.000" y="140.000" width="25.0" height="25.0" fill="black"/>
-<rect x="240.000" y="140.000" width="25.0" height="25.0" fill="black"/>
-<rect x="15.000" y="165.000" width="25.0" height="25.0" fill="black"/>
-<rect x="65.000" y="165.000" width="25.0" height="25.0" fill="black"/>
-<rect x="115.000" y="165.000" width="25.0" height="25.0" fill="black"/>
-<rect x="165.000" y="165.000" width="25.0" height="25.0" fill="black"/>
-<rect x="215.000" y="165.000" width="25.0" height="25.0" fill="black"/>
-<rect x="15.000" y="15.000" width="250.000" height="175.000" fill="none" stroke="black" stroke-width="0.2"/>
-<line x1="15.000" y1="198.000" x2="65.000" y2="198.000" stroke="black" stroke-width="0.4"/>
-<line x1="15.000" y1="196.500" x2="15.000" y2="199.500" stroke="black" stroke-width="0.4"/>
-<line x1="65.000" y1="196.500" x2="65.000" y2="199.500" stroke="black" stroke-width="0.4"/>
-<text x="69.000" y="199.500" font-family="sans-serif" font-size="4">50 mm  |  9x6 inner corners, 25 mm squares  |  print at 100%</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="279.4mm" height="215.9mm" viewBox="0 0 279.4 215.9">
+<rect x="0" y="0" width="279.4" height="215.9" fill="white"/>
+<rect x="14.700" y="20.450" width="25.0" height="25.0" fill="black"/>
+<rect x="64.700" y="20.450" width="25.0" height="25.0" fill="black"/>
+<rect x="114.700" y="20.450" width="25.0" height="25.0" fill="black"/>
+<rect x="164.700" y="20.450" width="25.0" height="25.0" fill="black"/>
+<rect x="214.700" y="20.450" width="25.0" height="25.0" fill="black"/>
+<rect x="39.700" y="45.450" width="25.0" height="25.0" fill="black"/>
+<rect x="89.700" y="45.450" width="25.0" height="25.0" fill="black"/>
+<rect x="139.700" y="45.450" width="25.0" height="25.0" fill="black"/>
+<rect x="189.700" y="45.450" width="25.0" height="25.0" fill="black"/>
+<rect x="239.700" y="45.450" width="25.0" height="25.0" fill="black"/>
+<rect x="14.700" y="70.450" width="25.0" height="25.0" fill="black"/>
+<rect x="64.700" y="70.450" width="25.0" height="25.0" fill="black"/>
+<rect x="114.700" y="70.450" width="25.0" height="25.0" fill="black"/>
+<rect x="164.700" y="70.450" width="25.0" height="25.0" fill="black"/>
+<rect x="214.700" y="70.450" width="25.0" height="25.0" fill="black"/>
+<rect x="39.700" y="95.450" width="25.0" height="25.0" fill="black"/>
+<rect x="89.700" y="95.450" width="25.0" height="25.0" fill="black"/>
+<rect x="139.700" y="95.450" width="25.0" height="25.0" fill="black"/>
+<rect x="189.700" y="95.450" width="25.0" height="25.0" fill="black"/>
+<rect x="239.700" y="95.450" width="25.0" height="25.0" fill="black"/>
+<rect x="14.700" y="120.450" width="25.0" height="25.0" fill="black"/>
+<rect x="64.700" y="120.450" width="25.0" height="25.0" fill="black"/>
+<rect x="114.700" y="120.450" width="25.0" height="25.0" fill="black"/>
+<rect x="164.700" y="120.450" width="25.0" height="25.0" fill="black"/>
+<rect x="214.700" y="120.450" width="25.0" height="25.0" fill="black"/>
+<rect x="39.700" y="145.450" width="25.0" height="25.0" fill="black"/>
+<rect x="89.700" y="145.450" width="25.0" height="25.0" fill="black"/>
+<rect x="139.700" y="145.450" width="25.0" height="25.0" fill="black"/>
+<rect x="189.700" y="145.450" width="25.0" height="25.0" fill="black"/>
+<rect x="239.700" y="145.450" width="25.0" height="25.0" fill="black"/>
+<rect x="14.700" y="170.450" width="25.0" height="25.0" fill="black"/>
+<rect x="64.700" y="170.450" width="25.0" height="25.0" fill="black"/>
+<rect x="114.700" y="170.450" width="25.0" height="25.0" fill="black"/>
+<rect x="164.700" y="170.450" width="25.0" height="25.0" fill="black"/>
+<rect x="214.700" y="170.450" width="25.0" height="25.0" fill="black"/>
+<rect x="14.700" y="20.450" width="250.000" height="175.000" fill="none" stroke="black" stroke-width="0.2"/>
+<line x1="14.700" y1="203.450" x2="64.700" y2="203.450" stroke="black" stroke-width="0.4"/>
+<line x1="14.700" y1="201.950" x2="14.700" y2="204.950" stroke="black" stroke-width="0.4"/>
+<line x1="64.700" y1="201.950" x2="64.700" y2="204.950" stroke="black" stroke-width="0.4"/>
+<text x="68.700" y="204.950" font-family="sans-serif" font-size="4">50 mm  |  9x6 inner corners, 25 mm squares  |  print at 100% (letter)</text>
 </svg>
