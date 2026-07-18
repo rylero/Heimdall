@@ -59,10 +59,9 @@
 
   // CSV tracker debug log (one row per update cycle).
   "log_tracking": true,
-  "log_path": "logs/tracker_log.csv",
+  "log_path": "logs/tracker_log.csv"
 
-  // Path to AprilTag field layout + camera calibration JSON.
-  // Comment out or remove this key to disable AprilTag pose correction.
-  // Disabled: /dev/video2 is now cam2 (YOLO detection), not the AprilTag camera.
-  // "apriltag_layout": "config/apriltag_layout.jsonc"
+  // AprilTag disabled: /dev/video2 is now cam2 (YOLO detection), not the AprilTag camera.
+  // To re-enable, restore video2 to the AprilTag cam and add back:
+  //   , "apriltag_layout": "config/apriltag_layout.jsonc"
 }
