@@ -34,13 +34,16 @@ public final class VelocityAvoidDriveAheadCommand {
   private static final double MAX_ANGULAR_RAD_PS = 1.5;
   private static final double STOP_TOLERANCE_M = 0.15;
 
-  // Predictive avoidance. Which objects count as (moving) obstacles -- including ones that just
-  // left view -- is handled by ObstacleMemory.
+  // Predictive avoidance. Which objects count as obstacles (moving or stationary) -- including ones
+  // that just left view -- is handled by ObstacleMemory.
   private static final double SAFE_RADIUS_M = 0.9; // desired clearance at closest approach
   private static final double AVOID_HORIZON_S =
       2.5; // ignore closest approaches farther out than this
   private static final double AVOID_GAIN = 1.5; // (m/s) per meter of predicted intrusion
   private static final double MAX_AVOID_MPS = 2.0;
+  // Below this predicted miss distance the approach is treated as head-on, and avoidance steers
+  // perpendicular to the approach rather than uselessly pushing straight back.
+  private static final double HEADON_EPS_M = 0.25;
 
   private VelocityAvoidDriveAheadCommand() {}
 
@@ -76,8 +79,8 @@ public final class VelocityAvoidDriveAheadCommand {
     Translation2d toGoal = goal.minus(position);
     double distance = toGoal.getNorm();
     double attractSpeed = Math.min(LINEAR_KP * distance, MAX_LINEAR_MPS);
-    Translation2d intended =
-        distance > 1e-6 ? toGoal.div(distance).times(attractSpeed) : Translation2d.kZero;
+    Translation2d toGoalUnit = distance > 1e-6 ? toGoal.div(distance) : new Translation2d(1.0, 0.0);
+    Translation2d intended = toGoalUnit.times(attractSpeed);
 
     // Predictive avoidance: for each moving obstacle (memory dead-reckons ones that just left the
     // FOV), propagate its position relative to the robot (moving at the intended velocity) to the
@@ -109,8 +112,19 @@ public final class VelocityAvoidDriveAheadCommand {
       // Push away from the predicted miss point, scaled by how far it intrudes and how soon.
       double intrusion = SAFE_RADIUS_M - missDist;
       double urgency = (AVOID_HORIZON_S - tca) / AVOID_HORIZON_S; // 1 = imminent, 0 = at horizon
-      Translation2d awayDir =
-          missDist > 1e-6 ? miss.div(missDist).unaryMinus() : toGoal.div(distance).unaryMinus();
+      Translation2d awayDir;
+      if (missDist > HEADON_EPS_M) {
+        awayDir = miss.div(missDist).unaryMinus(); // clear lateral miss -- push off it
+      } else {
+        // Near head-on: the miss point is ~on the robot, so pushing "away" is backward and useless.
+        // Steer perpendicular to the approach, toward the side the goal is on (default one side).
+        double rp = relPos.getNorm();
+        Translation2d obstacleDir = rp > 1e-6 ? relPos.div(rp) : toGoalUnit;
+        Translation2d perp = new Translation2d(-obstacleDir.getY(), obstacleDir.getX());
+        double side =
+            obstacleDir.getX() * toGoalUnit.getY() - obstacleDir.getY() * toGoalUnit.getX();
+        awayDir = side < 0.0 ? perp.unaryMinus() : perp;
+      }
       avoidance = avoidance.plus(awayDir.times(AVOID_GAIN * intrusion * urgency));
     }
     if (avoidance.getNorm() > MAX_AVOID_MPS) {

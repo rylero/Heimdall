@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Short-term memory of moving obstacles for the drive-ahead avoidance commands. A fast object that
- * gets very close leaves the camera FOV and stops being detected right when the robot is on top of
- * it; without memory the avoidance would forget it at the worst moment. This keeps each recently
- * seen moving object for {@link #HOLD_SECONDS} after its last detection, dead-reckoning its
- * position forward from its last known velocity so the avoidance keeps pushing until the robot has
- * cleared it.
+ * Short-term memory of obstacles for the drive-ahead avoidance commands. An object that gets very
+ * close leaves the camera FOV and stops being detected right when the robot is on top of it;
+ * without memory the avoidance would forget it at the worst moment. This keeps each recently seen
+ * object (moving or stationary) for {@link #HOLD_SECONDS} after its last detection, dead-reckoning
+ * its position forward from its last known velocity so the avoidance keeps pushing until the robot
+ * has cleared it.
  *
  * <p>One instance per command run (created in the deferred command body), so state resets on each
  * press. Not thread-safe -- only touched from the command's periodic on the main robot loop.
@@ -22,8 +22,6 @@ import java.util.Map;
 final class ObstacleMemory {
   /** How long a vanished obstacle is remembered and dead-reckoned before it is dropped. */
   private static final double HOLD_SECONDS = 1.5;
-  /** Objects slower than this are treated as stationary and not remembered. */
-  private static final double MOVING_SPEED_MPS = 0.3;
 
   /** A remembered obstacle, position propagated to the query time. */
   record Obstacle(Translation2d position, Translation2d velocity) {}
@@ -36,16 +34,12 @@ final class ObstacleMemory {
 
   private final Map<Integer, Entry> entries = new HashMap<>();
 
-  /** Refreshes memory with the currently tracked objects. */
+  /** Refreshes memory with the currently tracked objects (moving or stationary). */
   void update(List<TrackedObject> tracked, double now) {
     for (TrackedObject o : tracked) {
-      Translation2d velocity = new Translation2d(o.getVx(), o.getVy());
-      if (velocity.getNorm() < MOVING_SPEED_MPS) {
-        continue; // only remember moving obstacles
-      }
       Entry e = entries.computeIfAbsent(o.getTrackId(), (k) -> new Entry());
       e.position = new Translation2d(o.getX(), o.getY());
-      e.velocity = velocity;
+      e.velocity = new Translation2d(o.getVx(), o.getVy());
       e.lastSeen = now;
     }
   }

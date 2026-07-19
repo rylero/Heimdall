@@ -14,10 +14,11 @@ import org.littletonrobotics.junction.Logger;
 
 /**
  * Test-mode behaviour (potential-field avoidance): on press, drive to a fixed field point {@link
- * #GOAL_AHEAD_M} straight ahead of where the robot was at press time, steering around any MOVING
- * tracked objects. Avoidance is a reactive potential field -- goal attraction plus a repulsion from
- * each moving obstacle that grows as the robot nears it. Plain {@link ChassisSpeeds} velocity
- * control, no PathPlanner. Ends on arrival.
+ * #GOAL_AHEAD_M} straight ahead of where the robot was at press time, steering around any tracked
+ * objects (moving or stationary). Avoidance is a reactive potential field -- goal attraction, a
+ * radial repulsion that grows as the robot nears an obstacle, and a tangential term that steers
+ * around a head-on obstacle. Plain {@link ChassisSpeeds} velocity control, no PathPlanner. Ends on
+ * arrival.
  */
 public final class PotentialFieldDriveAheadCommand {
   private static final double GOAL_AHEAD_M = 3.0;
@@ -35,6 +36,10 @@ public final class PotentialFieldDriveAheadCommand {
   private static final double AVOID_RADIUS_M = 1.5;
   private static final double AVOID_GAIN = 1.5;
   private static final double MAX_AVOID_MPS = 2.0;
+  // Tangential steer-around: a fraction of the radial repulsion applied perpendicular to the
+  // robot->obstacle line so a head-on obstacle (where pure radial repulsion is collinear with the
+  // goal pull and just stalls/barges) gets passed on one side instead.
+  private static final double TANGENT_FACTOR = 1.5;
 
   private PotentialFieldDriveAheadCommand() {}
 
@@ -73,8 +78,9 @@ public final class PotentialFieldDriveAheadCommand {
     Translation2d velocity =
         distance > 1e-6 ? toGoal.div(distance).times(attractSpeed) : Translation2d.kZero;
 
-    // Repulsive velocity from each moving obstacle within the influence radius. Memory keeps an
-    // obstacle that just left the camera FOV (dead-reckoned) so we keep avoiding it at contact.
+    // Repulsion from each obstacle within the influence radius. Memory keeps an obstacle that just
+    // left the camera FOV (dead-reckoned) so we keep avoiding it at contact.
+    Translation2d toGoalUnit = distance > 1e-6 ? toGoal.div(distance) : new Translation2d(1.0, 0.0);
     double now = Timer.getFPGATimestamp();
     memory.update(heimdall.getTrackedObjects(), now);
     Translation2d repulsion = Translation2d.kZero;
@@ -85,7 +91,18 @@ public final class PotentialFieldDriveAheadCommand {
         continue;
       }
       double mag = AVOID_GAIN * (1.0 / d - 1.0 / AVOID_RADIUS_M);
-      repulsion = repulsion.plus(away.div(d).times(mag));
+      Translation2d awayUnit = away.div(d);
+      // Radial push straight away from the obstacle.
+      repulsion = repulsion.plus(awayUnit.times(mag));
+      // Tangential push to steer around it, on the side the goal is on (so we arc toward the goal).
+      Translation2d obstacleDir = awayUnit.unaryMinus(); // robot -> obstacle
+      Translation2d perp = new Translation2d(-obstacleDir.getY(), obstacleDir.getX());
+      double side = obstacleDir.getX() * toGoalUnit.getY() - obstacleDir.getY() * toGoalUnit.getX();
+      if (side < 0.0) {
+        perp =
+            perp.unaryMinus(); // goal is on the other side -- flip; near head-on defaults to +perp
+      }
+      repulsion = repulsion.plus(perp.times(mag * TANGENT_FACTOR));
     }
     if (repulsion.getNorm() > MAX_AVOID_MPS) {
       repulsion = repulsion.div(repulsion.getNorm()).times(MAX_AVOID_MPS);
