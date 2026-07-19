@@ -13,9 +13,9 @@ import java.util.Set;
 import org.littletonrobotics.junction.Logger;
 
 /**
- * Test-mode behaviour (predictive velocity avoidance): on press, hold still for {@link
- * #WAIT_SECONDS}, then drive to a fixed field point {@link #GOAL_AHEAD_M} straight ahead of where
- * the robot was when the wait ended, steering around any MOVING tracked objects.
+ * Test-mode behaviour (predictive velocity avoidance): on press, drive to a fixed field point
+ * {@link #GOAL_AHEAD_M} straight ahead of where the robot was at press time, steering around any
+ * MOVING tracked objects.
  *
  * <p>Unlike the reactive potential field, this reuses the object-velocity math from {@link
  * PredictiveInterceptCommand}: for each moving obstacle it computes the closest-approach point
@@ -25,7 +25,6 @@ import org.littletonrobotics.junction.Logger;
  * Plain {@link ChassisSpeeds} velocity control, no PathPlanner. Ends on arrival.
  */
 public final class VelocityAvoidDriveAheadCommand {
-  private static final double WAIT_SECONDS = 10.0;
   private static final double GOAL_AHEAD_M = 3.0;
 
   // Goal attraction (matches the other velocity test commands).
@@ -47,13 +46,11 @@ public final class VelocityAvoidDriveAheadCommand {
 
   /** Builds the command. Requires {@code drive}. */
   public static Command create(Drive drive, Heimdall heimdall) {
-    return Commands.run(drive::stop, drive)
-        .withTimeout(WAIT_SECONDS)
-        .andThen(Commands.defer(() -> driveToGoalAhead(drive, heimdall), Set.of(drive)))
+    return Commands.defer(() -> driveToGoalAhead(drive, heimdall), Set.of(drive))
         .withName("VelocityAvoidDriveAhead");
   }
 
-  /** Captures the goal 3 m ahead now (wait is over) and drives there with predictive avoidance. */
+  /** Captures the goal 3 m ahead (at schedule time) and drives there with predictive avoidance. */
   private static Command driveToGoalAhead(Drive drive, Heimdall heimdall) {
     Pose2d start = drive.getPose();
     Translation2d goal =

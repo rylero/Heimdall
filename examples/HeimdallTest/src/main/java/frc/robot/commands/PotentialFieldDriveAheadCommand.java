@@ -13,14 +13,13 @@ import java.util.Set;
 import org.littletonrobotics.junction.Logger;
 
 /**
- * Test-mode behaviour (potential-field avoidance): on press, hold still for {@link #WAIT_SECONDS},
- * then drive to a fixed field point {@link #GOAL_AHEAD_M} straight ahead of where the robot was
- * when the wait ended, steering around any MOVING tracked objects. Avoidance is a reactive
- * potential field -- goal attraction plus a repulsion from each moving obstacle that grows as the
- * robot nears it. Plain {@link ChassisSpeeds} velocity control, no PathPlanner. Ends on arrival.
+ * Test-mode behaviour (potential-field avoidance): on press, drive to a fixed field point {@link
+ * #GOAL_AHEAD_M} straight ahead of where the robot was at press time, steering around any MOVING
+ * tracked objects. Avoidance is a reactive potential field -- goal attraction plus a repulsion from
+ * each moving obstacle that grows as the robot nears it. Plain {@link ChassisSpeeds} velocity
+ * control, no PathPlanner. Ends on arrival.
  */
 public final class PotentialFieldDriveAheadCommand {
-  private static final double WAIT_SECONDS = 10.0;
   private static final double GOAL_AHEAD_M = 3.0;
 
   // Goal attraction.
@@ -42,13 +41,11 @@ public final class PotentialFieldDriveAheadCommand {
 
   /** Builds the command. Requires {@code drive}. */
   public static Command create(Drive drive, Heimdall heimdall) {
-    return Commands.run(drive::stop, drive)
-        .withTimeout(WAIT_SECONDS)
-        .andThen(Commands.defer(() -> driveToGoalAhead(drive, heimdall), Set.of(drive)))
+    return Commands.defer(() -> driveToGoalAhead(drive, heimdall), Set.of(drive))
         .withName("PotentialFieldDriveAhead");
   }
 
-  /** Captures the goal 3 m ahead now (wait is over) and drives there with obstacle avoidance. */
+  /** Captures the goal 3 m ahead (at schedule time) and drives there with obstacle avoidance. */
   private static Command driveToGoalAhead(Drive drive, Heimdall heimdall) {
     Pose2d start = drive.getPose();
     Translation2d goal =
