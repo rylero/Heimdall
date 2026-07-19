@@ -7,7 +7,7 @@ import edu.wpi.first.wpilibj.Alert;
 import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
-import edu.wpi.first.wpilibj2.command.button.CommandPS4Controller;
+import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.auto.AutoRoutines;
 import frc.robot.commands.DriveCommands;
@@ -36,7 +36,7 @@ public class RobotContainer {
   private final Heimdall heimdall;
 
   // Controller
-  private final CommandPS4Controller controller = new CommandPS4Controller(0);
+  private final CommandXboxController controller = new CommandXboxController(0);
 
   // Dashboard inputs
   private final LoggedDashboardChooser<Command> autoChooser;
@@ -137,8 +137,9 @@ public class RobotContainer {
             () -> -controller.getLeftX(),
             () -> -controller.getRightX()));
 
+    // X: reset the field-relative heading.
     controller
-        .square()
+        .x()
         .onTrue(
             Commands.runOnce(
                     () ->
@@ -151,15 +152,14 @@ public class RobotContainer {
                     drive)
                 .ignoringDisable(true));
 
-    // Hold A (cross): drive to and stop at the nearest fuel. Release to return to joystick.
-    controller.cross().whileTrue(PathfindToNearestFuelCommand.create(drive, heimdall));
+    // Hold A: drive to and stop at the nearest fuel. Release to return to joystick.
+    controller.a().whileTrue(PathfindToNearestFuelCommand.create(drive, heimdall));
 
-    // Hold B (circle): predictively intercept the nearest (moving) fuel. Release to return to
-    // joystick.
-    controller.circle().whileTrue(PredictiveInterceptCommand.create(drive, heimdall));
+    // Hold B: predictively intercept the nearest (moving) fuel. Release to return to joystick.
+    controller.b().whileTrue(PredictiveInterceptCommand.create(drive, heimdall));
 
-    // X-lock wheels (moved off circle, which is now the intercept button).
-    controller.triangle().whileTrue(Commands.run(drive::stopWithX, drive));
+    // Hold Y: X-lock wheels.
+    controller.y().whileTrue(Commands.run(drive::stopWithX, drive));
   }
 
   public Command getAutonomousCommand() {
