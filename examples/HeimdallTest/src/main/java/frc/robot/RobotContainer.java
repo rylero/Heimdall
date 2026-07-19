@@ -12,7 +12,9 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.auto.AutoRoutines;
 import frc.robot.commands.DriveCommands;
 import frc.robot.commands.PathfindToNearestFuelCommand;
+import frc.robot.commands.PotentialFieldDriveAheadCommand;
 import frc.robot.commands.PredictiveInterceptCommand;
+import frc.robot.commands.VelocityAvoidDriveAheadCommand;
 import frc.robot.subsystems.drive.Drive;
 import frc.robot.subsystems.drive.GyroIO;
 import frc.robot.subsystems.drive.GyroIOPigeon2;
@@ -160,6 +162,12 @@ public class RobotContainer {
 
     // Hold Y: X-lock wheels.
     controller.y().whileTrue(Commands.run(drive::stopWithX, drive));
+
+    // Right bumper: wait 10 s, then drive 3 m ahead avoiding moving objects (potential field).
+    controller.rightBumper().onTrue(PotentialFieldDriveAheadCommand.create(drive, heimdall));
+
+    // Left bumper: same, but with predictive velocity-based avoidance.
+    controller.leftBumper().onTrue(VelocityAvoidDriveAheadCommand.create(drive, heimdall));
   }
 
   public Command getAutonomousCommand() {
