@@ -23,7 +23,7 @@ public final class PathfindToNearestFuelCommand {
   private static final double LINEAR_KP = 1.0; // (m/s) per meter of position error
   private static final double THETA_KP = 2.0; // (rad/s) per radian of heading error
   // Hard speed caps -- deliberately slow, well under the drivetrain maxima.
-  private static final double MAX_LINEAR_MPS = 0.6;
+  private static final double MAX_LINEAR_MPS = 1.0;
   private static final double MAX_ANGULAR_RAD_PS = 1.5;
   // Considered "arrived" (and the command ends) inside this radius of the fuel.
   private static final double STOP_TOLERANCE_M = 0.15;

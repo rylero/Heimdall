@@ -5,6 +5,7 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
@@ -25,7 +26,11 @@ public final class PredictiveInterceptCommand {
   private static final double LINEAR_KP = 1.5; // (m/s) per meter, decel as we close on the fuel
   private static final double THETA_KP = 2.0; // (rad/s) per radian of heading error
   private static final double MAX_ANGULAR_RAD_PS = 2.0;
-  private static final double STOP_TOLERANCE_M = 0.15;
+  // Aim so the front of the robot (this far ahead of the pose center) touches the ball, rather than
+  // driving the center onto it. The robot faces the ball, so "front" is along its heading.
+  private static final double FRONT_OFFSET_M = Units.feetToMeters(1.5);
+  // Extra slack past the front-offset contact distance at which the command ends.
+  private static final double STOP_TOLERANCE_M = 0.05;
 
   private PredictiveInterceptCommand() {}
 
@@ -41,12 +46,14 @@ public final class PredictiveInterceptCommand {
     return new Translation2d(fuel.getX(), fuel.getY());
   }
 
-  /** True once a fuel is visible and the robot is within {@link #STOP_TOLERANCE_M} of it. */
+  /** True once a fuel is visible and the robot's front bumper has reached it. */
   private static boolean arrived(Drive drive, Heimdall heimdall) {
     Translation2d origin = drive.getPose().getTranslation();
     return heimdall
         .getNearestFuel(origin)
-        .map((fuel) -> fuelTranslation(fuel).getDistance(origin) <= STOP_TOLERANCE_M)
+        .map(
+            (fuel) ->
+                fuelTranslation(fuel).getDistance(origin) <= FRONT_OFFSET_M + STOP_TOLERANCE_M)
         .orElse(false);
   }
 
@@ -70,17 +77,21 @@ public final class PredictiveInterceptCommand {
     }
 
     double leadDistance = lead.getNorm();
-    double distanceToFuel = rel.getNorm();
+    Translation2d leadUnit = leadDistance > 1e-6 ? lead.div(leadDistance) : Translation2d.kZero;
 
-    Logger.recordOutput(
-        "TestMode/InterceptPoint", new Pose2d(pose.getTranslation().plus(lead), lead.getAngle()));
+    // Stop with the front bumper on the ball: the pose center only needs to travel to
+    // FRONT_OFFSET_M short of the (predicted) ball, along the approach direction.
+    double centerDistance = Math.max(0.0, leadDistance - FRONT_OFFSET_M);
+    Translation2d aimPoint = pose.getTranslation().plus(leadUnit.times(centerDistance));
 
-    // Speed proportional to the remaining distance to the actual fuel (so it decelerates on
-    // arrival), directed along the lead vector, capped at cruise speed.
-    double speed = Math.min(LINEAR_KP * distanceToFuel, INTERCEPT_SPEED_MPS);
-    Translation2d fieldVelocity =
-        leadDistance > 1e-6 ? lead.div(leadDistance).times(speed) : Translation2d.kZero;
+    Logger.recordOutput("TestMode/InterceptPoint", new Pose2d(aimPoint, lead.getAngle()));
 
+    // Speed proportional to the center's remaining distance (decelerates as the front reaches the
+    // ball), directed along the approach, capped at cruise speed.
+    double speed = Math.min(LINEAR_KP * centerDistance, INTERCEPT_SPEED_MPS);
+    Translation2d fieldVelocity = leadUnit.times(speed);
+
+    // Face the ball itself so the front bumper (heading direction) meets it.
     double headingError = lead.getAngle().minus(pose.getRotation()).getRadians();
     double omega = MathUtil.clamp(THETA_KP * headingError, -MAX_ANGULAR_RAD_PS, MAX_ANGULAR_RAD_PS);
 
