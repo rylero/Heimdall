@@ -1,10 +1,10 @@
 package frc.robot.commands;
 
-import com.heimdall.TrackedObject;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
@@ -34,8 +34,8 @@ public final class VelocityAvoidDriveAheadCommand {
   private static final double MAX_ANGULAR_RAD_PS = 1.5;
   private static final double STOP_TOLERANCE_M = 0.15;
 
-  // Predictive avoidance.
-  private static final double MOVING_SPEED_MPS = 0.3; // below this an obstacle is ignored
+  // Predictive avoidance. Which objects count as (moving) obstacles -- including ones that just
+  // left view -- is handled by ObstacleMemory.
   private static final double SAFE_RADIUS_M = 0.9; // desired clearance at closest approach
   private static final double AVOID_HORIZON_S =
       2.5; // ignore closest approaches farther out than this
@@ -58,13 +58,17 @@ public final class VelocityAvoidDriveAheadCommand {
             .getTranslation()
             .plus(new Translation2d(GOAL_AHEAD_M, 0.0).rotateBy(start.getRotation()));
 
-    return Commands.run(() -> stepTowardGoal(drive, heimdall, goal), drive)
+    // Fresh per run so obstacle memory doesn't leak across presses.
+    ObstacleMemory memory = new ObstacleMemory();
+
+    return Commands.run(() -> stepTowardGoal(drive, heimdall, goal, memory), drive)
         .until(() -> drive.getPose().getTranslation().getDistance(goal) <= STOP_TOLERANCE_M)
         .andThen(drive::stop)
         .withName("VelocityAvoidDriveAhead/ToGoal");
   }
 
-  private static void stepTowardGoal(Drive drive, Heimdall heimdall, Translation2d goal) {
+  private static void stepTowardGoal(
+      Drive drive, Heimdall heimdall, Translation2d goal, ObstacleMemory memory) {
     Pose2d pose = drive.getPose();
     Translation2d position = pose.getTranslation();
 
@@ -75,16 +79,15 @@ public final class VelocityAvoidDriveAheadCommand {
     Translation2d intended =
         distance > 1e-6 ? toGoal.div(distance).times(attractSpeed) : Translation2d.kZero;
 
-    // Predictive avoidance: for each moving obstacle, propagate its position relative to the robot
-    // (moving at the intended velocity) to the point of closest approach and push away from a
-    // predicted intrusion.
+    // Predictive avoidance: for each moving obstacle (memory dead-reckons ones that just left the
+    // FOV), propagate its position relative to the robot (moving at the intended velocity) to the
+    // point of closest approach and push away from a predicted intrusion.
+    double now = Timer.getFPGATimestamp();
+    memory.update(heimdall.getTrackedObjects(), now);
     Translation2d avoidance = Translation2d.kZero;
-    for (TrackedObject obj : heimdall.getTrackedObjects()) {
-      Translation2d obstacleVel = new Translation2d(obj.getVx(), obj.getVy());
-      if (obstacleVel.getNorm() < MOVING_SPEED_MPS) {
-        continue; // stationary -- ignore
-      }
-      Translation2d relPos = new Translation2d(obj.getX(), obj.getY()).minus(position);
+    for (ObstacleMemory.Obstacle obs : memory.obstacles(now)) {
+      Translation2d obstacleVel = obs.velocity();
+      Translation2d relPos = obs.position().minus(position);
       Translation2d relVel = obstacleVel.minus(intended); // obstacle motion as seen by the robot
       double relSpeedSq = relVel.getX() * relVel.getX() + relVel.getY() * relVel.getY();
       if (relSpeedSq < 1e-6) {

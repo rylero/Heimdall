@@ -1,10 +1,10 @@
 package frc.robot.commands;
 
-import com.heimdall.TrackedObject;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.subsystems.drive.Drive;
@@ -29,10 +29,9 @@ public final class PotentialFieldDriveAheadCommand {
   private static final double MAX_ANGULAR_RAD_PS = 1.5;
   private static final double STOP_TOLERANCE_M = 0.15;
 
-  // Obstacle repulsion. Only objects moving faster than MOVING_SPEED_MPS are avoided, and only
-  // within AVOID_RADIUS_M. Repulsion magnitude = AVOID_GAIN * (1/d - 1/R): zero at the radius,
-  // blowing up as the robot nears the obstacle.
-  private static final double MOVING_SPEED_MPS = 0.3;
+  // Obstacle repulsion within AVOID_RADIUS_M. Repulsion magnitude = AVOID_GAIN * (1/d - 1/R): zero
+  // at the radius, blowing up as the robot nears the obstacle. Which objects count as (moving)
+  // obstacles -- including ones that just left view -- is handled by ObstacleMemory.
   private static final double AVOID_RADIUS_M = 1.5;
   private static final double AVOID_GAIN = 1.5;
   private static final double MAX_AVOID_MPS = 2.0;
@@ -53,13 +52,17 @@ public final class PotentialFieldDriveAheadCommand {
             .getTranslation()
             .plus(new Translation2d(GOAL_AHEAD_M, 0.0).rotateBy(start.getRotation()));
 
-    return Commands.run(() -> stepTowardGoal(drive, heimdall, goal), drive)
+    // Fresh per run so obstacle memory doesn't leak across presses.
+    ObstacleMemory memory = new ObstacleMemory();
+
+    return Commands.run(() -> stepTowardGoal(drive, heimdall, goal, memory), drive)
         .until(() -> drive.getPose().getTranslation().getDistance(goal) <= STOP_TOLERANCE_M)
         .andThen(drive::stop)
         .withName("PotentialFieldDriveAhead/ToGoal");
   }
 
-  private static void stepTowardGoal(Drive drive, Heimdall heimdall, Translation2d goal) {
+  private static void stepTowardGoal(
+      Drive drive, Heimdall heimdall, Translation2d goal, ObstacleMemory memory) {
     Pose2d pose = drive.getPose();
     Translation2d position = pose.getTranslation();
 
@@ -70,13 +73,13 @@ public final class PotentialFieldDriveAheadCommand {
     Translation2d velocity =
         distance > 1e-6 ? toGoal.div(distance).times(attractSpeed) : Translation2d.kZero;
 
-    // Repulsive velocity from each moving obstacle within the influence radius.
+    // Repulsive velocity from each moving obstacle within the influence radius. Memory keeps an
+    // obstacle that just left the camera FOV (dead-reckoned) so we keep avoiding it at contact.
+    double now = Timer.getFPGATimestamp();
+    memory.update(heimdall.getTrackedObjects(), now);
     Translation2d repulsion = Translation2d.kZero;
-    for (TrackedObject obj : heimdall.getTrackedObjects()) {
-      if (Math.hypot(obj.getVx(), obj.getVy()) < MOVING_SPEED_MPS) {
-        continue; // stationary -- ignore
-      }
-      Translation2d away = position.minus(new Translation2d(obj.getX(), obj.getY()));
+    for (ObstacleMemory.Obstacle obs : memory.obstacles(now)) {
+      Translation2d away = position.minus(obs.position());
       double d = away.getNorm();
       if (d < 1e-6 || d >= AVOID_RADIUS_M) {
         continue;
