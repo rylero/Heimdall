@@ -77,7 +77,9 @@
   "log_tracking": true,
   "log_path": "logs/tracker_log.csv"
 
-  // AprilTag disabled: /dev/video2 is now cam2 (YOLO detection), not the AprilTag camera.
-  // To re-enable, restore video2 to the AprilTag cam and add back:
+  // AprilTag disabled and its layout config removed. An absent "apriltag_layout" key leaves
+  // apriltag_layout_path as nullopt, which the app treats as "off" (src/app/heimdall_app.cpp:29).
+  // To re-enable: recreate config/apriltag_layout.jsonc (camera intrinsics + field tag poses,
+  // see SETUP.md §"AprilTag camera") and add back:
   //   , "apriltag_layout": "config/apriltag_layout.jsonc"
 }
