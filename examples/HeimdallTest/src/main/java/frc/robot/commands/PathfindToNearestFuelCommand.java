@@ -3,6 +3,7 @@ package frc.robot.commands;
 import com.heimdall.TrackedObject;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -74,8 +75,10 @@ public final class PathfindToNearestFuelCommand {
     Translation2d fieldVelocity =
         distance > 1e-6 ? error.div(distance).times(speed) : Translation2d.kZero;
 
-    // Turn to face the fuel as we approach.
-    double headingError = error.getAngle().minus(pose.getRotation()).getRadians();
+    // Turn to point AWAY from the fuel as we approach, so the back of the robot leads into it.
+    // Rotation2d.minus normalizes, so the error still wraps to [-pi, pi] and we turn the short way.
+    double headingError =
+        error.getAngle().plus(Rotation2d.kPi).minus(pose.getRotation()).getRadians();
     double omega = MathUtil.clamp(THETA_KP * headingError, -MAX_ANGULAR_RAD_PS, MAX_ANGULAR_RAD_PS);
 
     drive.runVelocity(

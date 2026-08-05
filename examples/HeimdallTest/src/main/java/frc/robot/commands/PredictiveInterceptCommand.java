@@ -3,6 +3,7 @@ package frc.robot.commands;
 import com.heimdall.TrackedObject;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
@@ -26,9 +27,10 @@ public final class PredictiveInterceptCommand {
   private static final double LINEAR_KP = 1.5; // (m/s) per meter, decel as we close on the fuel
   private static final double THETA_KP = 2.0; // (rad/s) per radian of heading error
   private static final double MAX_ANGULAR_RAD_PS = 2.0;
-  // Aim so the front of the robot (this far ahead of the pose center) touches the ball, rather than
-  // driving the center onto it. The robot faces the ball, so "front" is along its heading.
-  private static final double FRONT_OFFSET_M = Units.feetToMeters(1.5);
+  // Aim so the back of the robot (this far behind the pose center) touches the ball, rather than
+  // driving the center onto it. The robot points away from the ball, so "back" is opposite its
+  // heading. Distance from center to bumper is the same either way.
+  private static final double REAR_OFFSET_M = Units.feetToMeters(1.5);
   // Extra slack past the front-offset contact distance at which the command ends.
   private static final double STOP_TOLERANCE_M = 0.05;
 
@@ -46,14 +48,13 @@ public final class PredictiveInterceptCommand {
     return new Translation2d(fuel.getX(), fuel.getY());
   }
 
-  /** True once a fuel is visible and the robot's front bumper has reached it. */
+  /** True once a fuel is visible and the robot's rear bumper has reached it. */
   private static boolean arrived(Drive drive, Heimdall heimdall) {
     Translation2d origin = drive.getPose().getTranslation();
     return heimdall
         .getNearestFuel(origin)
         .map(
-            (fuel) ->
-                fuelTranslation(fuel).getDistance(origin) <= FRONT_OFFSET_M + STOP_TOLERANCE_M)
+            (fuel) -> fuelTranslation(fuel).getDistance(origin) <= REAR_OFFSET_M + STOP_TOLERANCE_M)
         .orElse(false);
   }
 
@@ -79,9 +80,9 @@ public final class PredictiveInterceptCommand {
     double leadDistance = lead.getNorm();
     Translation2d leadUnit = leadDistance > 1e-6 ? lead.div(leadDistance) : Translation2d.kZero;
 
-    // Stop with the front bumper on the ball: the pose center only needs to travel to
-    // FRONT_OFFSET_M short of the (predicted) ball, along the approach direction.
-    double centerDistance = Math.max(0.0, leadDistance - FRONT_OFFSET_M);
+    // Stop with the rear bumper on the ball: the pose center only needs to travel to
+    // REAR_OFFSET_M short of the (predicted) ball, along the approach direction.
+    double centerDistance = Math.max(0.0, leadDistance - REAR_OFFSET_M);
     Translation2d aimPoint = pose.getTranslation().plus(leadUnit.times(centerDistance));
 
     Logger.recordOutput("TestMode/InterceptPoint", new Pose2d(aimPoint, lead.getAngle()));
@@ -91,8 +92,11 @@ public final class PredictiveInterceptCommand {
     double speed = Math.min(LINEAR_KP * centerDistance, INTERCEPT_SPEED_MPS);
     Translation2d fieldVelocity = leadUnit.times(speed);
 
-    // Face the ball itself so the front bumper (heading direction) meets it.
-    double headingError = lead.getAngle().minus(pose.getRotation()).getRadians();
+    // Point directly AWAY from the ball so the rear bumper meets it: the target heading is the
+    // approach bearing turned 180 deg. Rotation2d.minus normalizes, so the error still wraps to
+    // [-pi, pi] and the robot turns the short way round.
+    double headingError =
+        lead.getAngle().plus(Rotation2d.kPi).minus(pose.getRotation()).getRadians();
     double omega = MathUtil.clamp(THETA_KP * headingError, -MAX_ANGULAR_RAD_PS, MAX_ANGULAR_RAD_PS);
 
     drive.runVelocity(
