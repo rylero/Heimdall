@@ -1,0 +1,47 @@
+{
+  "id": 0,
+  "type": "usb",
+  // Prefer a stable by-id path over /dev/videoN — enumeration order can swap after a
+  // brownout/re-plug (§2D). Find it with `ls -l /dev/v4l/by-id/` and use e.g.
+  // "/dev/v4l/by-id/usb-<vendor>_<model>_<serial>-video-index0".
+  "device": "/dev/video0",
+  "width": 640,
+  "height": 480,
+  "fps": 60,
+  "hw_decode": false,
+  "mirror_of": -1,
+  // Sensor mounted right-side-up — no pre-nvinfer rotation. Only 0/90/180/270 allowed.
+  // Keep this consistent with extrinsics.roll (rotation 0 → roll 0).
+  "rotation": 0,
+  // nvinfer network input dims (must match infer-dims in config/infer_yolo26n.txt). Detections
+  // arrive letterboxed into this size; projection undoes the letterbox to native pixels.
+  "infer_width": 640,
+  "infer_height": 640,
+  // Calibrated at 640x480. RMS reprojection error 0.2188 px.
+  "intrinsics": {
+    "fx": 547.7599,
+    "fy": 548.4707,
+    "cx": 359.6751,
+    "cy": 197.0189,
+    "distortion": { "k1": 0.033185, "k2": -0.083290, "p1": -0.002644, "p2": 0.000842, "k3": 0.086952 }
+  },
+  // Camera pose in the robot frame. Translation in meters, angles in radians
+  // (convention: src/pose/camera_params.h:44).
+  "extrinsics": {
+    // Measured: x -24 in, y -13.5 in, z 19.6 in  →  × 0.0254 m/in
+    "tx": -0.6096,
+    "ty": -0.3429,
+    "tz": 0.4978,
+
+    // Mounted on the robot's right (ty negative = right, since +Y is left in WPILib).
+    // Facing backward (180°) then yawed 35° outward toward -Y, i.e. clockwise: 180° - 35° = 145°.
+    // 145° × π/180 = 2.53073 rad.
+    "yaw": 2.53073,
+
+    // Tilted 22° down. Positive pitch = looking down, per the convention above.
+    "pitch": 0.38397,
+
+    // Sensor right-side-up, matching "rotation": 0 above.
+    "roll": 0.0
+  }
+}
